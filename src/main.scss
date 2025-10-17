@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Styles personnalisés pour la matrice de compétences - Approche alternative */
+.competences-table-wrapper {
+  position: relative;
+  max-height: 24rem;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background: white;
+}
+
+.competences-table-scroll {
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.competences-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  position: relative;
+}
+
+/* En-tête sticky */
+.competences-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.competences-table thead th {
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Colonnes fixes - approche simplifiée */
+.competences-table th:first-child,
+.competences-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: #f3f4f6;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 6rem;
+}
+
+.competences-table th:nth-child(2),
+.competences-table td:nth-child(2) {
+  position: sticky;
+  left: 6rem;
+  z-index: 20;
+  background-color: #f3f4f6;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 8rem;
+}
+
+/* En-tête des colonnes fixes avec z-index plus élevé */
+.competences-table thead th:first-child,
+.competences-table thead th:nth-child(2) {
+  z-index: 30;
+  background-color: #f3f4f6;
+}
+
+/* Cellules du corps pour les colonnes fixes */
+.competences-table tbody td:first-child,
+.competences-table tbody td:nth-child(2) {
+  background-color: white;
+  z-index: 20;
+}
+
+/* Lignes alternées pour les colonnes fixes */
+.competences-table tbody tr:nth-child(even) td:first-child,
+.competences-table tbody tr:nth-child(even) td:nth-child(2) {
+  background-color: #f9fafb;
+}
+
+.competences-table tbody tr:nth-child(odd) td:first-child,
+.competences-table tbody tr:nth-child(odd) td:nth-child(2) {
+  background-color: white;
+}
+
+/* Bordures */
+.competences-table th,
+.competences-table td {
+  border: 1px solid #d1d5db;
+}
+
+/* Styles pour les niveaux de compétence */
+.competence-niveau-0 {
+  background-color: #f5f5f5;
+}
+
+.competence-niveau-1 {
+  background-color: #fff3cd;
+}
+
+.competence-niveau-2 {
+  background-color: #ffeaa7;
+}
+
+.competence-niveau-3 {
+  background-color: #d4edda;
+}

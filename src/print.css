@@ -1,0 +1,415 @@
+/* Styles pour l'impression */
+@media print {
+  /* Masquer les éléments non nécessaires à l'impression */
+  .no-print,
+  button:not(.print-keep),
+  .sticky,
+  nav,
+  .navigation,
+  .sidebar,
+  .header-actions,
+  select,
+  .grid.grid-cols-1.md\\:grid-cols-4 > div:first-child {
+    display: none !important;
+  }
+
+  /* Réinitialiser les styles de base pour l'impression */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Styles pour la page d'impression */
+  @page {
+    size: A4 landscape;
+    margin: 0.5cm;
+  }
+
+  /* Conteneur principal */
+  .print-container {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* En-tête d'impression */
+  .print-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #007F61;
+    padding-bottom: 10px;
+  }
+
+  .print-header h1 {
+    color: #007F61 !important;
+    font-size: 18pt !important;
+    margin: 0 !important;
+  }
+
+  .print-header h2 {
+    color: #333 !important;
+    font-size: 14pt !important;
+    margin: 5px 0 !important;
+  }
+
+  /* Tableau de planification */
+  .planning-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt !important;
+    margin-bottom: 20px !important;
+  }
+
+  .planning-table th,
+  .planning-table td {
+    border: 1px solid #333 !important;
+    padding: 4px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  .planning-table th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+    font-size: 9pt !important;
+  }
+
+  /* Couleurs des activités pour l'impression */
+  .print-picking-frigo { background-color: #C8E6C9 !important; }
+  .print-controle { background-color: #FFECB3 !important; }
+  .print-eo { background-color: #B3E5FC !important; }
+  .print-rempl-aut { background-color: #D1C4E9 !important; }
+  .print-picking-trad { background-color: #FFCCBC !important; }
+  .print-rangement { background-color: #F5F5F5 !important; }
+  .print-competence-manquante { background-color: #FFCDD2 !important; }
+
+  /* Équipes */
+  .print-equipe-matin { background-color: #E8F5E8 !important; }
+  .print-equipe-apres-midi { background-color: #E3F2FD !important; }
+
+  /* Légende */
+  .print-legend {
+    margin-top: 20px;
+    page-break-inside: avoid;
+  }
+
+  .print-legend h3 {
+    font-size: 12pt !important;
+    margin-bottom: 10px !important;
+    color: #333 !important;
+  }
+
+  .print-legend-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 5px !important;
+    font-size: 9pt !important;
+  }
+
+  .print-legend-item {
+    display: flex !important;
+    align-items: center !important;
+    padding: 3px !important;
+    border: 1px solid #ccc !important;
+  }
+
+  .print-legend-color {
+    width: 12px !important;
+    height: 12px !important;
+    margin-right: 5px !important;
+    border: 1px solid #333 !important;
+  }
+
+  /* Informations supplémentaires */
+  .print-info {
+    margin-top: 20px;
+    font-size: 10pt !important;
+    page-break-inside: avoid;
+  }
+
+  .print-info h3 {
+    font-size: 12pt !important;
+    margin-bottom: 5px !important;
+    color: #333 !important;
+  }
+
+  /* Éviter les coupures de page dans les éléments importants */
+  .planning-table,
+  .print-legend,
+  .print-info {
+    page-break-inside: avoid;
+  }
+
+  /* Masquer les éléments de navigation et boutons */
+  .flex.mb-6.border-b,
+  .sticky.top-0,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  /* Forcer l'affichage du contenu principal */
+  .grid.grid-cols-1.gap-6 {
+    display: block !important;
+  }
+
+  .md\\:col-span-3 {
+    width: 100% !important;
+  }
+
+  /* Afficher le contenu de planification */
+  .bg-white.shadow.border.rounded-lg {
+    display: block !important;
+    page-break-inside: avoid;
+  }
+
+  /* Styles pour la grille de planification */
+  .grid.text-xs {
+    display: grid !important;
+    font-size: 8pt !important;
+  }
+
+  /* Assurer que les éléments de planification sont visibles */
+  .space-y-6 {
+    display: block !important;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* Styles spécifiques pour la grille de planification */
+  .grid[style*="gridTemplateColumns"] {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt !important;
+  }
+
+  .grid[style*="gridTemplateColumns"] > div:first-child {
+    display: table-row !important;
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+  }
+
+  .grid[style*="gridTemplateColumns"] > div:not(:first-child) {
+    display: table-row !important;
+  }
+
+  .grid[style*="gridTemplateColumns"] > div > * {
+    display: table-cell !important;
+    border: 1px solid #333 !important;
+    padding: 8px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  /* Transformer la grille en tableau pour l'impression */
+  .print-planning-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 20px 0 !important;
+  }
+
+  .print-planning-table th,
+  .print-planning-table td {
+    border: 1px solid #333 !important;
+    padding: 8px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    font-size: 10pt !important;
+  }
+
+  .print-planning-table th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+  }
+
+  .print-planning-table .poste-matin {
+    background-color: #E8F5E8 !important;
+  }
+
+  .print-planning-table .poste-apres-midi {
+    background-color: #E3F2FD !important;
+  }
+
+  /* Masquer les sélecteurs d'employés en mode impression */
+  select {
+    display: none !important;
+  }
+
+  /* Afficher seulement le nom de l'employé */
+  .bg-green-100,
+  .bg-blue-100 {
+    display: block !important;
+    font-weight: bold !important;
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  /* Styles pour les noms d'employés dans les cellules */
+  .print-employee-name {
+    font-weight: bold !important;
+    color: #333 !important;
+  }
+
+  /* ===== STYLES SPÉCIFIQUES POUR PLANNING FINAL TAB ===== */
+  
+  /* Masquer tous les éléments sauf le tableau principal */
+  .space-y-6 > div:not(:nth-child(2)) {
+    display: none !important;
+  }
+
+  /* Optimiser le tableau principal */
+  .space-y-6 > div:nth-child(2) {
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Optimiser l'en-tête du Planning Final */
+  .space-y-6 > div:nth-child(1) {
+    display: block !important;
+    margin: 0 0 10px 0 !important;
+    padding: 10px !important;
+  }
+
+  .space-y-6 > div:nth-child(1) h2 {
+    font-size: 14pt !important;
+    margin: 0 0 5px 0 !important;
+  }
+
+  .space-y-6 > div:nth-child(1) p {
+    font-size: 9pt !important;
+    margin: 0 !important;
+  }
+
+  /* Optimiser le tableau du Planning Final */
+  table.min-w-full {
+    width: 154% !important;
+    font-size: 6pt !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    transform: scale(0.65);
+    transform-origin: top left;
+  }
+
+  table.min-w-full th {
+    padding: 2px 1px !important;
+    font-size: 5.5pt !important;
+    background-color: #2d5f2e !important;
+    color: white !important;
+    border: 1px solid #333 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  table.min-w-full td {
+    padding: 2px 1px !important;
+    font-size: 5.5pt !important;
+    border: 1px solid #333 !important;
+    line-height: 1.1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+  }
+
+  /* Réduire la taille des badges de disponibilité */
+  table.min-w-full td span.px-3,
+  table.min-w-full td span.px-2 {
+    padding: 0px 2px !important;
+    font-size: 5pt !important;
+    white-space: nowrap !important;
+  }
+
+  /* Optimiser les cellules d'activités */
+  table.min-w-full td > div {
+    font-size: 5.5pt !important;
+    line-height: 1.1 !important;
+  }
+
+  table.min-w-full td > div.font-bold {
+    font-size: 6pt !important;
+    white-space: nowrap !important;
+  }
+
+  table.min-w-full td > div.text-sm {
+    font-size: 5pt !important;
+  }
+
+  /* Masquer la légende en bas du tableau */
+  .space-y-6 .mt-6.p-4 {
+    display: none !important;
+  }
+
+  /* Masquer la section Actions */
+  .space-y-6 > div:last-child {
+    display: none !important;
+  }
+
+  /* Réduire l'espacement entre les lignes */
+  table.min-w-full tbody tr {
+    height: auto !important;
+  }
+
+  /* Optimiser la largeur des colonnes - TRÈS COMPACT */
+  table.min-w-full th:first-child,
+  table.min-w-full td:first-child {
+    width: 50px !important;
+    max-width: 50px !important;
+    min-width: 50px !important;
+  }
+
+  table.min-w-full th:nth-child(2),
+  table.min-w-full td:nth-child(2) {
+    width: 35px !important;
+    max-width: 35px !important;
+    min-width: 35px !important;
+  }
+
+  /* Colonnes créneaux - largeur fixe et compacte */
+  table.min-w-full th:not(:first-child):not(:nth-child(2)):not(:last-child),
+  table.min-w-full td:not(:first-child):not(:nth-child(2)):not(:last-child) {
+    width: 55px !important;
+    max-width: 55px !important;
+    min-width: 55px !important;
+  }
+
+  /* Colonne Total */
+  table.min-w-full th:last-child,
+  table.min-w-full td:last-child {
+    width: 35px !important;
+    max-width: 35px !important;
+    min-width: 35px !important;
+  }
+
+  /* Forcer les couleurs d'arrière-plan des activités */
+  table.min-w-full td[style*="backgroundColor"] {
+    -webkit-print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* Classe utilitaire pour forcer l'impression */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+}
