@@ -19,8 +19,23 @@ const ParametresTab = ({
   setNouvelleSousActivite,
   ajouterSousActivite,
   supprimerSousActivite,
-  toggleHeritageCompetence
+  toggleHeritageCompetence,
+  toggleCreneauSousActivite
 }) => {
+
+  // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
+  const getSousActiviteNom = (sousActivite) => {
+    return typeof sousActivite === 'string' ? sousActivite : sousActivite.nom;
+  };
+
+  // Helper pour obtenir les créneaux autorisés d'une sous-activité
+  const getSousActiviteCreneaux = (sousActivite) => {
+    if (typeof sousActivite === 'string') {
+      // Format ancien = tous les créneaux par défaut
+      return parametres.creneauxPersonnalises?.map(c => c.id) || [];
+    }
+    return sousActivite.creneauxAutorises || [];
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -408,31 +423,81 @@ const ParametresTab = ({
               </div>
               
               {parametres.sousActivites[activite] && parametres.sousActivites[activite].length > 0 ? (
-                <div className="space-y-2 mb-3">
-                  {parametres.sousActivites[activite].map(sousAct => (
-                    <div key={sousAct} className="flex items-center justify-between bg-white p-3 rounded border">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium">{sousAct}</span>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={parametres.heritageCompetences[sousAct] || false}
-                            onChange={() => toggleHeritageCompetence(sousAct)}
-                            className="rounded"
-                          />
-                          <span className={parametres.heritageCompetences[sousAct] ? 'text-green-600' : 'text-gray-500'}>
-                            {parametres.heritageCompetences[sousAct] ? '✓ Hérite des compétences' : 'Compétences spécifiques'}
-                          </span>
-                        </label>
+                <div className="space-y-3 mb-3">
+                  {parametres.sousActivites[activite].map(sousAct => {
+                    const nomSousAct = getSousActiviteNom(sousAct);
+                    const creneauxAutorises = getSousActiviteCreneaux(sousAct);
+                    
+                    return (
+                      <div key={nomSousAct} className="bg-white p-4 rounded border">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium text-lg">{nomSousAct}</span>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={parametres.heritageCompetences[nomSousAct] || false}
+                                onChange={() => toggleHeritageCompetence(nomSousAct)}
+                                className="rounded"
+                              />
+                              <span className={parametres.heritageCompetences[nomSousAct] ? 'text-green-600' : 'text-gray-500'}>
+                                {parametres.heritageCompetences[nomSousAct] ? '✓ Hérite des compétences' : 'Compétences spécifiques'}
+                              </span>
+                            </label>
+                          </div>
+                          <button
+                            onClick={() => supprimerSousActivite(activite, nomSousAct)}
+                            className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                        
+                        {/* Sélection des créneaux horaires autorisés */}
+                        <div className="ml-4 mt-3 p-3 bg-gray-50 rounded">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            🕒 Créneaux horaires autorisés:
+                          </label>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {parametres.creneauxPersonnalises?.map(creneau => {
+                              // Vérifier si ce créneau est autorisé pour l'activité principale
+                              const estAutoriseActivitePrincipale = creneau.activitesAutorisees.includes(activite);
+                              
+                              return (
+                                <label 
+                                  key={creneau.id} 
+                                  className={`flex items-center gap-2 p-2 rounded border ${
+                                    estAutoriseActivitePrincipale 
+                                      ? 'bg-white hover:bg-gray-50 cursor-pointer' 
+                                      : 'bg-gray-200 cursor-not-allowed opacity-60'
+                                  }`}
+                                  title={!estAutoriseActivitePrincipale 
+                                    ? `Ce créneau n'est pas autorisé pour l'activité ${activite}` 
+                                    : ''
+                                  }
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={creneauxAutorises.includes(creneau.id)}
+                                    onChange={() => toggleCreneauSousActivite(activite, nomSousAct, creneau.id)}
+                                    disabled={!estAutoriseActivitePrincipale}
+                                    className="rounded"
+                                  />
+                                  <span className={`text-sm ${!estAutoriseActivitePrincipale ? 'text-gray-500' : ''}`}>
+                                    {creneau.label}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            ℹ️ Cette sous-activité ne sera disponible que pour les postes sur ces créneaux.
+                            Les créneaux grisés ne sont pas autorisés pour l'activité <strong>{activite}</strong>.
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => supprimerSousActivite(activite, sousAct)}
-                        className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-sm text-gray-500 mb-3 italic">

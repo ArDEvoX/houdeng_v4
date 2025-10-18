@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef, useCallback } from 'react';
 
 const AffectationAutoTab = ({
   dateAffectation,
@@ -27,8 +27,81 @@ const AffectationAutoTab = ({
   setNouvelleActivite,
   ajouterActivitePersonnalisee,
   supprimerActivitePersonnalisee,
-  sauvegarderPlanification
+  sauvegarderPlanification,
+  planifications,
+  setPlanifications
 }) => {
+  const [statutSauvegarde, setStatutSauvegarde] = React.useState(''); // '', 'saving', 'saved', 'error'
+  const timeoutSauvegardeRef = useRef(null);
+
+  // Fonction de sauvegarde automatique avec debounce
+  const sauvegarderAutomatiquement = useCallback(async () => {
+    if (!dateAffectation || !dimensionnementGenere) return;
+
+    try {
+      setStatutSauvegarde('saving');
+
+      const planification = {
+        date: dateAffectation,
+        volume: volumeAffectation,
+        dimensionnement: dimensionnementGenere,
+        affectations: affectationsPostes,
+        activitesPersonnalisees: activitesPersonnalisees,
+        createdAt: new Date().toISOString()
+      };
+
+      await sauvegarderPlanification(dateAffectation, planification);
+
+      setStatutSauvegarde('saved');
+
+      // Réinitialiser le statut après 3 secondes
+      setTimeout(() => {
+        setStatutSauvegarde('');
+      }, 3000);
+
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+      setStatutSauvegarde('error');
+
+      // Réinitialiser le statut après 5 secondes
+      setTimeout(() => {
+        setStatutSauvegarde('');
+      }, 5000);
+    }
+  }, [dateAffectation, volumeAffectation, dimensionnementGenere, affectationsPostes, activitesPersonnalisees, sauvegarderPlanification]);
+
+  // Fonction avec debounce
+  const debouncedSauvegarde = useCallback(() => {
+    if (timeoutSauvegardeRef.current) {
+      clearTimeout(timeoutSauvegardeRef.current);
+    }
+
+    timeoutSauvegardeRef.current = setTimeout(() => {
+      sauvegarderAutomatiquement();
+    }, 500); // 500ms de délai
+  }, [sauvegarderAutomatiquement]);
+
+  // Sauvegarder automatiquement après la génération du dimensionnement
+  useEffect(() => {
+    if (dimensionnementGenere && dateAffectation && Object.keys(affectationsPostes).length > 0) {
+      // Sauvegarder immédiatement après la génération (sans debounce)
+      sauvegarderAutomatiquement();
+    }
+  }, [dimensionnementGenere?.postesGeneres?.length, dateAffectation]); // Déclenché uniquement lors de la génération initiale
+
+  // Sauvegarder automatiquement lors des modifications d'affectations (avec debounce)
+  useEffect(() => {
+    if (dimensionnementGenere && dateAffectation && Object.keys(affectationsPostes).length > 0) {
+      debouncedSauvegarde();
+    }
+
+    return () => {
+      if (timeoutSauvegardeRef.current) {
+        clearTimeout(timeoutSauvegardeRef.current);
+      }
+    };
+  }, [affectationsPostes, activitesPersonnalisees, debouncedSauvegarde]);
+
   const handleGenererDimensionnement = () => {
     if (!dateAffectation || !volumeAffectation) {
       alert('Veuillez sélectionner une date et saisir un volume');
@@ -116,6 +189,34 @@ const AffectationAutoTab = ({
             </button>
           </div>
         </div>
+
+        {/* Indicateur de statut de sauvegarde */}
+        {statutSauvegarde && (
+          <div className={`mt-4 p-3 rounded-lg flex items-center gap-2 ${
+            statutSauvegarde === 'saving' ? 'bg-blue-50 text-blue-800' :
+            statutSauvegarde === 'saved' ? 'bg-green-50 text-green-800' :
+            'bg-red-50 text-red-800'
+          }`}>
+            {statutSauvegarde === 'saving' && (
+              <>
+                <div className="w-4 h-4 border-2 border-t-2 border-blue-600 rounded-full animate-spin"></div>
+                <span>💾 Sauvegarde en cours...</span>
+              </>
+            )}
+            {statutSauvegarde === 'saved' && (
+              <>
+                <span className="text-xl">✓</span>
+                <span>Sauvegardé automatiquement</span>
+              </>
+            )}
+            {statutSauvegarde === 'error' && (
+              <>
+                <span className="text-xl">⚠️</span>
+                <span>Erreur lors de la sauvegarde. Veuillez réessayer.</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Section 2: Analyse des disponibilités */}
@@ -244,18 +345,11 @@ const AffectationAutoTab = ({
                     })
                     .map((employe, employeIndex) => {
                       const dispo = disponibilites[employe.id]?.[dateAffectation];
-                      const isEOAffecte = Object.values(affectationsPostes).includes(employe.id) && 
-                        dimensionnementGenere.postesGeneres.some(p => 
-                          affectationsPostes[p.id] === employe.id && p.exclusif
-                        );
 
                       return (
                         <tr key={employe.id} className={employeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                           <td className="px-3 py-2 border font-medium">
                             {employe.nom}
-                            {isEOAffecte && (
-                              <span className="ml-2 text-xs bg-red-100 text-red-800 px-1 rounded">EO EXCLUSIF</span>
-                            )}
                           </td>
                           <td className="px-3 py-2 border text-center">
                             <span className={`px-2 py-1 rounded text-xs ${
@@ -273,8 +367,6 @@ const AffectationAutoTab = ({
                           </td>
                           {(parametres.creneauxPersonnalises || []).map(creneau => {
                             const peutTravailler = (() => {
-                              if (isEOAffecte) return false;
-                              
                               if (dispo === 'miTempsMatin' && !['creneau1', 'creneau2'].includes(creneau.id)) {
                                 return false;
                               }
@@ -393,8 +485,8 @@ const AffectationAutoTab = ({
             </div>
             <div className="mt-2 text-xs text-gray-600">
               • Les cellules grisées indiquent une incompatibilité avec la disponibilité de l'employé<br/>
-              • EO EXCLUSIF : L'employé ne peut faire que cette activité pendant toute sa journée<br/>
-              • Les couleurs de fond correspondent aux activités affectées
+              • Les couleurs de fond correspondent aux activités affectées<br/>
+              • 💾 Les modifications sont sauvegardées automatiquement
             </div>
           </div>
         </div>
@@ -456,32 +548,12 @@ const AffectationAutoTab = ({
         </div>
       )}
 
-      {/* Section 5: Actions de sauvegarde */}
+      {/* Section 5: Actions */}
       {dimensionnementGenere && dateAffectation && (
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold mb-4">Actions</h3>
           
           <div className="flex gap-4">
-            <button 
-              className="px-6 py-2 text-white rounded hover:bg-opacity-90"
-              style={{ backgroundColor: "#007F61" }}
-              onClick={() => {
-                const planification = {
-                  date: dateAffectation,
-                  volume: volumeAffectation,
-                  dimensionnement: dimensionnementGenere,
-                  affectations: affectationsPostes,
-                  activitesPersonnalisees: activitesPersonnalisees,
-                  createdAt: new Date().toISOString()
-                };
-                
-                sauvegarderPlanification(dateAffectation, planification);
-                alert('Planification sauvegardée avec succès !');
-              }}
-            >
-              💾 Sauvegarder planification
-            </button>
-            
             <button 
               className="px-6 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
               onClick={() => {
@@ -494,6 +566,10 @@ const AffectationAutoTab = ({
             >
               🔄 Réinitialiser
             </button>
+          </div>
+          
+          <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-800">
+            💡 <strong>Note :</strong> Vos modifications sont sauvegardées automatiquement. Vous n'avez plus besoin de cliquer sur un bouton de sauvegarde.
           </div>
         </div>
       )}
