@@ -11,6 +11,12 @@ const PlanningFinalTab = ({
   couleursActivites,
   setActiveTab
 }) => {
+  // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
+  const getSousActiviteNom = (sousActivite) => {
+    if (!sousActivite) return null;
+    return typeof sousActivite === 'string' ? sousActivite : sousActivite.nom;
+  };
+
   // Vérifier qu'une planification existe
   if (!dimensionnementGenere || !dateAffectation) {
     return (
@@ -161,7 +167,7 @@ const PlanningFinalTab = ({
                         null;
 
                       const activite = poste?.activite || null;
-                      const sousActivite = poste?.sousActivite || null;
+                      const sousActivite = poste?.sousActivite ? getSousActiviteNom(poste.sousActivite) : null;
                       const affichage = sousActivite || activite;
                       const heures = poste?.heuresDimensionnees || 0;
 

@@ -388,9 +388,12 @@ const AffectationAutoTab = ({
                               return poste && poste.creneauId === creneau.id;
                             });
 
-                            const activiteActuelle = affectationActuelle ? 
-                              dimensionnementGenere.postesGeneres.find(p => p.id === affectationActuelle[0])?.activite : 
+                            const posteActuel = affectationActuelle ? 
+                              dimensionnementGenere.postesGeneres.find(p => p.id === affectationActuelle[0]) : 
                               null;
+
+                            const activiteActuelle = posteActuel?.activite || null;
+                            const estAlerteNonCompetent = posteActuel?.alerte || false;
 
                             const activitesPossibles = [
                               ...creneau.activitesAutorisees,
@@ -411,9 +414,10 @@ const AffectationAutoTab = ({
                                   <select
                                     className={`w-full p-1 text-xs border rounded ${
                                       activiteActuelle ? 'font-medium' : ''
-                                    }`}
+                                    } ${estAlerteNonCompetent ? 'border-2 border-red-600' : ''}`}
                                     style={{
-                                      backgroundColor: activiteActuelle ? couleursActivites[activiteActuelle] : 'white'
+                                      backgroundColor: estAlerteNonCompetent ? '#FEE2E2' : (activiteActuelle ? couleursActivites[activiteActuelle] : 'white'),
+                                      color: estAlerteNonCompetent ? '#991B1B' : 'inherit'
                                     }}
                                     value={activiteActuelle || ''}
                                     onChange={(e) => {
@@ -482,6 +486,17 @@ const AffectationAutoTab = ({
               <div><span className="bg-blue-100 text-blue-800 px-1 rounded">M TARD</span> = Après-midi complet</div>
               <div><span className="bg-green-50 text-green-700 px-1 rounded">1/2 M TÔT</span> = Demi-journée matin</div>
               <div><span className="bg-blue-50 text-blue-700 px-1 rounded">1/2 M TARD</span> = Demi-journée après-midi</div>
+            </div>
+            <div className="mt-3 p-3 bg-blue-50 border-l-4 border-blue-500 rounded text-xs">
+              <h6 className="font-semibold mb-2 text-blue-900">📋 Logique d'attribution automatique :</h6>
+              <div className="space-y-1 text-blue-800">
+                <div><strong>1. EO :</strong> Attribution jusqu'à delta positif minimal, employés exclusifs toute la journée</div>
+                <div><strong>2. Picking Frigo/Trad/Contrôle :</strong> Même nombre de personnes sur chaque créneau (formule X fixe)</div>
+                <div><strong>3. Rempl. Automate/Rangement :</strong> Remplissage équilibré tour par tour (1 personne par créneau, puis recommencer)</div>
+                <div className="mt-2 pt-2 border-t border-blue-300">
+                  <span className="bg-red-100 text-red-800 px-2 py-1 rounded">⚠️ Rouge</span> = Employé non compétent affecté par manque de personnel
+                </div>
+              </div>
             </div>
             <div className="mt-2 text-xs text-gray-600">
               • Les cellules grisées indiquent une incompatibilité avec la disponibilité de l'employé<br/>

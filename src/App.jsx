@@ -229,6 +229,22 @@ const LogistiqueApp = () => {
     return mappingActivites[activite] || activite;
   };
 
+  // FONCTIONS HELPER POUR LES SOUS-ACTIVITÉS (doivent être avant useMemo)
+  
+  // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
+  const getSousActiviteNom = (sousActivite) => {
+    return typeof sousActivite === 'string' ? sousActivite : sousActivite.nom;
+  };
+
+  // Helper pour obtenir les créneaux autorisés d'une sous-activité
+  const getSousActiviteCreneaux = (sousActivite) => {
+    if (typeof sousActivite === 'string') {
+      // Format ancien = tous les créneaux par défaut
+      return parametres.creneauxPersonnalises?.map(c => c.id) || [];
+    }
+    return sousActivite.creneauxAutorises || [];
+  };
+
   // Fonction pour convertir hex en RGB
   const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -311,8 +327,8 @@ const LogistiqueApp = () => {
     // Générer le dégradé
     const degrade = genererDegrade(couleurBase, sousActivites.length);
     
-    // Trouver l'index de cette sous-activité
-    const index = sousActivites.indexOf(activite);
+    // Trouver l'index de cette sous-activité (gérer le nouveau format objet)
+    const index = sousActivites.findIndex(sa => getSousActiviteNom(sa) === activite);
     
     if (index === -1) {
       return couleurBase;
@@ -329,7 +345,8 @@ const LogistiqueApp = () => {
     Object.keys(parametres.sousActivites || {}).forEach(activitePrincipale => {
       const sousActivites = parametres.sousActivites[activitePrincipale] || [];
       sousActivites.forEach(sousActivite => {
-        couleurs[sousActivite] = obtenirCouleurActivite(sousActivite);
+        const nomSousActivite = getSousActiviteNom(sousActivite);
+        couleurs[nomSousActivite] = obtenirCouleurActivite(nomSousActivite);
       });
     });
     
@@ -549,6 +566,7 @@ const LogistiqueApp = () => {
     return () => clearTimeout(timer);
   }, [parametres]);
 
+
   // Charger les données depuis Firebase au chargement
   useEffect(() => {
     const chargerDonnees = async () => {
@@ -562,16 +580,11 @@ const LogistiqueApp = () => {
           const paramsFirebase = docParamsSnap.data().parametres || {};
           const productiviteFirebase = docParamsSnap.data().productivite || {};
           
-          // Merger heritageCompetences en s'assurant que PICKING 16 hérite toujours
+          // Merger heritageCompetences
           const heritageCompetencesMerged = {
             ...defaultParametres.heritageCompetences,
             ...(paramsFirebase.heritageCompetences || {})
           };
-          
-          // Forcer PICKING 16 à avoir l'héritage activé (comme les autres sous-activités de PICKING TRAD)
-          if (heritageCompetencesMerged['PICKING 16'] === false) {
-            heritageCompetencesMerged['PICKING 16'] = true;
-          }
           
           // Merger avec les valeurs par défaut pour ne jamais perdre les nouvelles propriétés
           const parametresMerged = {
@@ -585,15 +598,6 @@ const LogistiqueApp = () => {
           };
           
           setParametres(parametresMerged);
-          
-          // Sauvegarder immédiatement la correction dans Firebase
-          if (heritageCompetencesMerged['PICKING 16'] === true && paramsFirebase.heritageCompetences?.['PICKING 16'] === false) {
-            await setDoc(doc(db, "parametres", "global"), {
-              parametres: parametresMerged,
-              productivite: productiviteFirebase || defaultProductivite,
-              lastUpdated: new Date()
-            });
-          }
           
           setProductivite({
             ...defaultProductivite,
@@ -1374,8 +1378,9 @@ const traiterDisponibilites = () => {
     competencesActivites.forEach(activite => {
       const sousActivites = parametres.sousActivites[activite] || [];
       sousActivites.forEach(sousAct => {
-        if (parametres.heritageCompetences[sousAct] === false) {
-          activitesAAfficher.push(sousAct);
+        const nomSousActivite = getSousActiviteNom(sousAct);
+        if (parametres.heritageCompetences[nomSousActivite] === false) {
+          activitesAAfficher.push(nomSousActivite);
         }
       });
     });
@@ -1792,14 +1797,26 @@ const traiterDisponibilites = () => {
       
       // Ne traiter que les activités qui ont des sous-activités configurées
       if (sousActivitesPossibles.length > 0) {
-        // Grouper uniquement par activité principale, pas par créneau
+      // Filtrer les sous-activités autorisées pour le créneau de ce poste
+      const sousActivitesAutoriseesCreneaux = sousActivitesPossibles.filter(sousAct => {
+        const creneauxAutorises = getSousActiviteCreneaux(sousAct);
+        const estAutorise = creneauxAutorises.includes(poste.creneauId);
+        return estAutorise;
+      });
+      
+      // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes les sous-activités (fallback)
+      const sousActivitesAUtiliser = sousActivitesAutoriseesCreneaux.length > 0 
+        ? sousActivitesAutoriseesCreneaux 
+        : sousActivitesPossibles;
+        
+        // Grouper uniquement par activité principale
         const key = activitePrincipale;
         
         if (!groupes[key]) {
           groupes[key] = {
             activite: activitePrincipale,
-            sousActivites: sousActivitesPossibles,
-            postesParEmploye: {} // Nouveau : grouper les postes par employé
+            sousActivites: sousActivitesAUtiliser,
+            postesParEmploye: {} // Grouper les postes par employé
           };
         }
         
@@ -1813,16 +1830,31 @@ const traiterDisponibilites = () => {
         }
       }
     });
-
+    
     // Pour chaque activité principale, attribuer les sous-activités de manière équilibrée
     let indexGlobal = 0; // Compteur global pour assurer la rotation entre employés
     
     Object.values(groupes).forEach(groupe => {
+      // Séparer les sous-activités selon leur héritage de compétences
+      const sousActivitesAvecHeritage = [];
+      const sousActivitesSansHeritage = [];
+      
+      groupe.sousActivites.forEach(sousAct => {
+        const nom = getSousActiviteNom(sousAct);
+        if (parametres.heritageCompetences[nom] === false) {
+          sousActivitesSansHeritage.push(sousAct);
+        } else {
+          sousActivitesAvecHeritage.push(sousAct);
+        }
+      });
+      
       // Trier les employés par nombre de postes (du plus au moins) pour équilibrer
       const employesOrdonnes = Object.entries(groupe.postesParEmploye)
         .sort((a, b) => b[1].length - a[1].length);
       
       employesOrdonnes.forEach(([employeId, postesEmploye]) => {
+        const employe = employes.find(e => e.id === employeId);
+        
         // Trier les postes de cet employé par créneau pour cohérence
         postesEmploye.sort((a, b) => {
           const creneauA = parseInt(a.creneauId.replace('creneau', ''));
@@ -1830,15 +1862,74 @@ const traiterDisponibilites = () => {
           return creneauA - creneauB;
         });
         
-        // Attribuer des sous-activités différentes pour chaque créneau de cet employé
+        // NOUVELLE LOGIQUE : Prioriser les sous-activités selon les compétences ET les créneaux
         postesEmploye.forEach((poste, indexLocal) => {
-          // Utiliser le compteur global + index local pour assurer variété
-          const sousActiviteIndex = (indexGlobal + indexLocal) % groupe.sousActivites.length;
-          poste.sousActivite = getSousActiviteNom(groupe.sousActivites[sousActiviteIndex]);
+          let sousActiviteAttribuee = null;
+          let alerteCompetence = false;
+          
+          // Filtrer les sous-activités autorisées pour ce créneau spécifique
+          const sousActivitesCreneauActuel = groupe.sousActivites.filter(sousAct => {
+            const creneauxAutorises = getSousActiviteCreneaux(sousAct);
+            const estAutorise = creneauxAutorises.includes(poste.creneauId);
+            return estAutorise;
+          });
+          
+          // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes
+          const sousActivitesAChoisir = sousActivitesCreneauActuel.length > 0 
+            ? sousActivitesCreneauActuel 
+            : groupe.sousActivites;
+          
+          // Séparer selon l'héritage parmi les sous-activités disponibles pour ce créneau
+          const avecHeritageCreneauActuel = sousActivitesAChoisir.filter(sa => {
+            const nom = getSousActiviteNom(sa);
+            return parametres.heritageCompetences[nom] !== false;
+          });
+          
+          const sansHeritageCreneauActuel = sousActivitesAChoisir.filter(sa => {
+            const nom = getSousActiviteNom(sa);
+            return parametres.heritageCompetences[nom] === false;
+          });
+          
+          // Si il y a des sous-activités SANS héritage pour ce créneau
+          if (sansHeritageCreneauActuel.length > 0) {
+            // Chercher une sous-activité sans héritage pour laquelle l'employé a la compétence
+            const sousActivitesCompetentes = sansHeritageCreneauActuel.filter(sousAct => {
+              const nom = getSousActiviteNom(sousAct);
+              return (competences[employeId]?.[nom] || 0) > 0;
+            });
+            
+            if (sousActivitesCompetentes.length > 0) {
+              // Attribution en rotation parmi celles où il a la compétence
+              const index = (indexGlobal + indexLocal) % sousActivitesCompetentes.length;
+              sousActiviteAttribuee = getSousActiviteNom(sousActivitesCompetentes[index]);
+            } else {
+              // Aucune compétence pour les sous-activités sans héritage
+              // Attribuer quand même mais avec alerte
+              const index = (indexGlobal + indexLocal) % sansHeritageCreneauActuel.length;
+              sousActiviteAttribuee = getSousActiviteNom(sansHeritageCreneauActuel[index]);
+              alerteCompetence = true; // Marquer comme alerte
+            }
+          } else if (avecHeritageCreneauActuel.length > 0) {
+            // Toutes les sous-activités héritent, attribution normale
+            const index = (indexGlobal + indexLocal) % avecHeritageCreneauActuel.length;
+            sousActiviteAttribuee = getSousActiviteNom(avecHeritageCreneauActuel[index]);
+          } else if (sousActivitesAChoisir.length > 0) {
+            // Fallback : attribuer n'importe quelle sous-activité disponible
+            const index = (indexGlobal + indexLocal) % sousActivitesAChoisir.length;
+            sousActiviteAttribuee = getSousActiviteNom(sousActivitesAChoisir[index]);
+          }
+          
+          if (sousActiviteAttribuee) {
+            poste.sousActivite = sousActiviteAttribuee;
+            
+            // Si pas de compétence pour une sous-activité sans héritage, marquer l'alerte
+            if (alerteCompetence) {
+              poste.alerteSousActivite = true;
+            }
+          }
         });
         
         // Incrémenter le compteur global pour le prochain employé
-        // On incrémente de la longueur des postes pour éviter les répétitions
         indexGlobal += postesEmploye.length;
       });
     });
@@ -2065,114 +2156,170 @@ const traiterDisponibilites = () => {
       };
     }
 
-    // Étape 3: Calculer les besoins par créneau (Règle 3) - Avec capacité réelle
-    const besoinsParCreneau = calculerBesoinsParCreneau(heuresNecessaires, date, employesDisponibles);
-    
     // Initialisation
     const postesGeneres = [];
-    const employesAffectesEO = new Set(); // Règle 1
-    const creneauxUtilises = new Set(); // Pour éviter double affectation
-    const compteurAffectations = {}; // Règle 4 : compter les affectations par employé et activité
+    const employesAffectesEO = new Set();
+    const creneauxUtilises = new Set();
     let posteId = 1;
-    
-    // Initialiser le compteur d'affectations
-    employesDisponibles.forEach(employe => {
-      compteurAffectations[employe.id] = {};
-    });
     
     const creneauxHoraires = parametres.creneauxPersonnalises || [];
 
-    // ===== PHASE 1 : Affectation EO exclusif (Règle 1) =====
-    const employesEO = employesDisponibles
-      .filter(e => (competences[e.id]?.['EO'] || 0) > 0)
-      .sort((a, b) => (competences[b.id]?.['EO'] || 0) - (competences[a.id]?.['EO'] || 0));
-
-    let besoinEORestant = heuresNecessaires['EO'] || 0;
+    // ===== PHASE 1 : Affectation EO avec delta positif minimal =====
+    const besoinEO = heuresNecessaires['EO'] || 0;
     
-    for (const employe of employesEO) {
-      if (besoinEORestant <= 0.01) break;
+    if (besoinEO > 0) {
+      // Employés compétents EO triés par compétence décroissante
+      const employesEO = employesDisponibles
+        .filter(e => (competences[e.id]?.['EO'] || 0) > 0)
+        .sort((a, b) => (competences[b.id]?.['EO'] || 0) - (competences[a.id]?.['EO'] || 0));
+
+      let heuresAffecteesEO = 0;
       
-      const disponibilite = disponibilites[employe.id]?.[date];
-      const creneauxEmploye = obtenirCreneauxEmploye(disponibilite);
-      const heuresDisponibles = creneauxEmploye.reduce((sum, c) => sum + c.duree, 0);
-      
-      // Si cet employé peut couvrir (ou presque) le besoin EO restant
-      if (heuresDisponibles <= besoinEORestant + 1) {
-        // Affecter à EO pour toute sa journée
-        creneauxEmploye.forEach(creneau => {
-          postesGeneres.push({
-            id: `poste_${posteId++}`,
-            activite: 'EO',
-            creneauId: creneau.id,
-            creneauLabel: creneau.label,
-            equipe: creneau.equipe,
-            heuresDimensionnees: creneau.duree,
-            employeAffecte: employe.id,
-            employeNom: employe.nom,
-            niveauCompetence: competences[employe.id]?.['EO'] || 0,
-            exclusif: true
+      // Algorithme glouton : ajouter des employés jusqu'à delta positif
+      for (const employe of employesEO) {
+        const disponibilite = disponibilites[employe.id]?.[date];
+        const creneauxEmploye = obtenirCreneauxEmploye(disponibilite);
+        const heuresDisponibles = creneauxEmploye.reduce((sum, c) => sum + c.duree, 0);
+        
+        // Calculer le delta si on ajoute cet employé
+        const nouvellesHeures = heuresAffecteesEO + heuresDisponibles;
+        const deltaActuel = heuresAffecteesEO - besoinEO;
+        const nouveauDelta = nouvellesHeures - besoinEO;
+        
+        // Si on n'a pas encore de delta positif, on ajoute l'employé
+        if (deltaActuel <= 0) {
+          // Affecter à EO pour toute sa journée
+          creneauxEmploye.forEach(creneau => {
+            postesGeneres.push({
+              id: `poste_${posteId++}`,
+              activite: 'EO',
+              creneauId: creneau.id,
+              creneauLabel: creneau.label,
+              equipe: creneau.equipe,
+              heuresDimensionnees: creneau.duree,
+              employeAffecte: employe.id,
+              employeNom: employe.nom,
+              niveauCompetence: competences[employe.id]?.['EO'] || 0,
+              exclusif: true
+            });
+            
+            creneauxUtilises.add(`${employe.id}_${creneau.id}`);
           });
           
-          creneauxUtilises.add(`${employe.id}_${creneau.id}`);
+          heuresAffecteesEO = nouvellesHeures;
+          employesAffectesEO.add(employe.id);
           
-          // Déduire du besoin
-          if (besoinsParCreneau[creneau.id]?.['EO']) {
-            besoinsParCreneau[creneau.id]['EO'] = Math.max(0, besoinsParCreneau[creneau.id]['EO'] - 1);
+          // Si on a atteint un delta positif, on s'arrête
+          if (nouveauDelta > 0) {
+            break;
           }
-        });
-        
-        besoinEORestant -= heuresDisponibles;
-        employesAffectesEO.add(employe.id);
-        compteurAffectations[employe.id]['EO'] = creneauxEmploye.length;
+        } else {
+          // On a déjà un delta positif, on s'arrête
+          break;
+        }
       }
     }
 
     // ===== PHASE 2 : Affectation des autres activités =====
+    
     const employesRestants = employesDisponibles.filter(e => !employesAffectesEO.has(e.id));
     
-    // Trier les activités par besoin décroissant (sauf EO)
-    const activitesATraiter = Object.entries(heuresNecessaires)
-      .filter(([act, _]) => act !== 'EO')
-      .sort((a, b) => b[1] - a[1]);
+    // Séparer les activités par type d'algorithme
+    const activitesXFixe = ['PICKING FRIGO', 'PICKING TRAD', 'CONTRÔLE'];
+    const activitesFlexibles = ['REMPL. AUT.', 'RANGEMENT'];
     
-    // Pour chaque créneau
-    creneauxHoraires.forEach(creneau => {
-      // Pour chaque activité dans l'ordre de priorité
-      activitesATraiter.forEach(([activite, _]) => {
-        // Vérifier si cette activité est autorisée sur ce créneau
-        if (!creneau.activitesAutorisees.includes(activite)) return;
+    // PHASE 2A : Activités avec X fixe (même nombre par créneau)
+    activitesXFixe.forEach(activite => {
+      const besoinActivite = heuresNecessaires[activite];
+      if (!besoinActivite || besoinActivite <= 0) return;
+      
+      console.log(`\n--- Activité X FIXE: ${activite} (${besoinActivite.toFixed(2)}h nécessaires) ---`);
+      
+      // Identifier les créneaux autorisés pour cette activité
+      const creneauxAutorises = creneauxHoraires.filter(c => 
+        c.activitesAutorisees.includes(activite)
+      );
+      
+      if (creneauxAutorises.length === 0) {
+        console.log(`⚠️ Aucun créneau autorisé pour ${activite}`);
+        return;
+      }
+      
+      // Calculer la somme des durées des créneaux autorisés
+      const sommeDurees = creneauxAutorises.reduce((sum, c) => sum + c.duree, 0);
+      
+      // Calculer X (nombre de personnes par créneau)
+      const X = Math.ceil(besoinActivite / sommeDurees);
+      
+      console.log(`Créneaux autorisés: ${creneauxAutorises.map(c => c.label).join(', ')}`);
+      console.log(`Somme durées: ${sommeDurees.toFixed(2)}h`);
+      console.log(`X = ⌈${besoinActivite.toFixed(2)} / ${sommeDurees.toFixed(2)}⌉ = ${X} personne${X > 1 ? 's' : ''} par créneau`);
+      
+      // Pour chaque créneau autorisé, affecter X personnes
+      creneauxAutorises.forEach(creneau => {
+        console.log(`\n  Créneau ${creneau.label}:`);
         
-        // Nombre de postes nécessaires pour cette activité sur ce créneau
-        const nombrePostesNecessaires = besoinsParCreneau[creneau.id][activite] || 0;
-        
-        if (nombrePostesNecessaires <= 0) return;
-        
-        // Obtenir les employés éligibles pour cette activité sur ce créneau
+        // Identifier les employés éligibles pour ce créneau
         const employesEligibles = employesRestants.filter(employe => {
-          // Doit avoir la compétence
-          const competence = competences[employe.id]?.[activite] || 0;
-          if (competence === 0) return false;
+          // Vérifier disponibilité sur ce créneau
+          const disponibilite = disponibilites[employe.id]?.[date];
+          if (!disponibilite || disponibilite === 'non') return false;
           
-          // Doit pouvoir travailler sur ce créneau
-          return peutTravaillerSurCreneau(employe, creneau, date, employesAffectesEO, creneauxUtilises);
-        });
-        
-        if (employesEligibles.length === 0) return;
-        
-        // Trier par priorité (Règles 4 et 5)
-        const employesTries = trierEmployesParPriorite(employesEligibles, activite, compteurAffectations);
-        
-        // Affecter les postes (Règle 2 : respecter le nombre calculé)
-        let postesAffectes = 0;
-        for (const employe of employesTries) {
-          if (postesAffectes >= nombrePostesNecessaires) break;
-          
-          // Vérifier à nouveau la disponibilité (au cas où déjà affecté depuis)
-          if (!peutTravaillerSurCreneau(employe, creneau, date, employesAffectesEO, creneauxUtilises)) {
-            continue;
+          // Vérifier compatibilité créneau/disponibilité
+          if (disponibilite === 'miTempsMatin' && !['creneau1', 'creneau2'].includes(creneau.id)) {
+            return false;
+          }
+          if (disponibilite === 'miTempsApresMidi' && !['creneau5', 'creneau6'].includes(creneau.id)) {
+            return false;
+          }
+          if (disponibilite === 'matin' && creneau.equipe === 'apresMidi') {
+            return false;
+          }
+          if (disponibilite === 'apresMidi' && creneau.equipe === 'matin') {
+            return false;
           }
           
-          // Créer le poste
+          // Vérifier que le créneau n'est pas déjà utilisé
+          if (creneauxUtilises.has(`${employe.id}_${creneau.id}`)) {
+            return false;
+          }
+          
+          return true;
+        });
+        
+        if (employesEligibles.length === 0) {
+          console.log(`  ⚠️ Aucun employé disponible`);
+          return;
+        }
+        
+        // Séparer employés compétents et non compétents
+        const employesCompetents = employesEligibles.filter(e => 
+          (competences[e.id]?.[activite] || 0) > 0
+        ).sort((a, b) => {
+          // Trier par compétence DESC puis par nombre d'affectations ASC
+          const compA = competences[a.id]?.[activite] || 0;
+          const compB = competences[b.id]?.[activite] || 0;
+          if (compB !== compA) return compB - compA;
+          
+          // Compter les affectations
+          const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
+          const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
+          return affectA - affectB;
+        });
+        
+        const employesNonCompetents = employesEligibles.filter(e => 
+          (competences[e.id]?.[activite] || 0) === 0
+        );
+        
+        console.log(`  Employés compétents: ${employesCompetents.length}, non compétents: ${employesNonCompetents.length}`);
+        
+        // Affecter X personnes
+        let postesAffectes = 0;
+        
+        // D'abord les compétents
+        for (const employe of employesCompetents) {
+          if (postesAffectes >= X) break;
+          
           postesGeneres.push({
             id: `poste_${posteId++}`,
             activite: activite,
@@ -2186,150 +2333,188 @@ const traiterDisponibilites = () => {
             exclusif: false
           });
           
-          // Marquer le créneau comme utilisé pour cet employé
           creneauxUtilises.add(`${employe.id}_${creneau.id}`);
-          
-          // Mettre à jour le compteur d'affectations (Règle 4)
-          if (!compteurAffectations[employe.id][activite]) {
-            compteurAffectations[employe.id][activite] = 0;
-          }
-          compteurAffectations[employe.id][activite]++;
-          
           postesAffectes++;
+          console.log(`  ✓ ${employe.nom} (compétent, niveau ${competences[employe.id]?.[activite]})`);
         }
+        
+        // Compléter avec des non compétents si nécessaire
+        if (postesAffectes < X) {
+          console.log(`  ⚠️ Manque ${X - postesAffectes} personne${X - postesAffectes > 1 ? 's' : ''}, affectation d'employés NON compétents`);
+          
+          for (const employe of employesNonCompetents) {
+            if (postesAffectes >= X) break;
+            
+            postesGeneres.push({
+              id: `poste_${posteId++}`,
+              activite: activite,
+              creneauId: creneau.id,
+              creneauLabel: creneau.label,
+              equipe: creneau.equipe,
+              heuresDimensionnees: creneau.duree,
+              employeAffecte: employe.id,
+              employeNom: employe.nom,
+              niveauCompetence: 0, // NON COMPÉTENT
+              exclusif: false,
+              alerte: true // Marqueur pour affichage rouge
+            });
+            
+            creneauxUtilises.add(`${employe.id}_${creneau.id}`);
+            postesAffectes++;
+            console.log(`  ⚠️ ${employe.nom} (NON compétent - ALERTE)`);
+          }
+        }
+        
+        console.log(`  Total affecté: ${postesAffectes} / ${X} demandés`);
       });
     });
 
-    // ===== PHASE 3 : Remplissage intelligent des écarts négatifs =====
-    // Calculer les écarts initiaux
-    let continuerRemplissage = true;
-    let iterationsMax = 50; // Sécurité pour éviter boucle infinie
-    let iteration = 0;
-    
-    while (continuerRemplissage && iteration < iterationsMax) {
-      iteration++;
+    // PHASE 2B : Activités flexibles (algorithme round-robin)
+    activitesFlexibles.forEach(activite => {
+      const besoinActivite = heuresNecessaires[activite];
+      if (!besoinActivite || besoinActivite <= 0) return;
       
-      // Calculer les écarts actuels
-      const ecartsActuels = {};
-      Object.entries(heuresNecessaires).forEach(([activite, heuresNecessaire]) => {
-        let heuresAffectees = 0;
-        postesGeneres.forEach(poste => {
-          if (poste.activite === activite && poste.employeAffecte) {
-            heuresAffectees += poste.heuresDimensionnees;
-          }
-        });
-        ecartsActuels[activite] = heuresAffectees - heuresNecessaire;
-      });
+      console.log(`\n--- Activité FLEXIBLE (Round-Robin): ${activite} (${besoinActivite.toFixed(2)}h nécessaires) ---`);
       
-      // Trouver l'activité avec le plus grand écart négatif
-      let activiteMaxEcart = null;
-      let ecartMax = -0.5; // Seuil minimum pour continuer
+      // Identifier les créneaux autorisés pour cette activité
+      const creneauxAutorises = creneauxHoraires.filter(c => 
+        c.activitesAutorisees.includes(activite)
+      );
       
-      Object.entries(ecartsActuels).forEach(([activite, ecart]) => {
-        if (ecart < ecartMax) {
-          ecartMax = ecart;
-          activiteMaxEcart = activite;
-        }
-      });
-      
-      // Si aucun écart négatif significatif, arrêter
-      if (!activiteMaxEcart) {
-        continuerRemplissage = false;
-        break;
+      if (creneauxAutorises.length === 0) {
+        console.log(`⚠️ Aucun créneau autorisé pour ${activite}`);
+        return;
       }
       
-      // Trouver les créneaux autorisés pour cette activité
-      const creneauxPourActivite = creneauxHoraires
-        .filter(c => c.activitesAutorisees.includes(activiteMaxEcart))
-        .sort((a, b) => b.duree - a.duree); // Trier par durée décroissante
+      console.log(`Créneaux autorisés: ${creneauxAutorises.map(c => c.label).join(', ')}`);
+      console.log(`Algorithme: 1 personne par créneau, puis recommencer jusqu'à combler le besoin total`);
       
-      if (creneauxPourActivite.length === 0) {
-        continuerRemplissage = false;
-        break;
-      }
+      let besoinRestant = besoinActivite;
+      let numeroTour = 1;
       
-      // Essayer d'affecter sur chaque créneau
-      let posteAjoute = false;
-      
-      for (const creneau of creneauxPourActivite) {
-        // Trouver les employés disponibles pour ce créneau et cette activité
-        const employesCandidats = employesRestants.filter(employe => {
-          // Doit avoir la compétence
-          const competence = competences[employe.id]?.[activiteMaxEcart] || 0;
-          if (competence === 0) return false;
+      // Algorithme Round-Robin : affecter 1 personne par créneau, puis recommencer
+      while (besoinRestant > 0.01) {
+        console.log(`\n  === Tour ${numeroTour} (besoin restant: ${besoinRestant.toFixed(2)}h) ===`);
+        
+        let affectationsCeTour = 0;
+        
+        // Pour chaque créneau, essayer d'affecter 1 personne
+        for (const creneau of creneauxAutorises) {
+          if (besoinRestant <= 0.01) break; // Besoin couvert, arrêter
           
-          // Doit pouvoir travailler sur ce créneau
-          if (!peutTravaillerSurCreneau(employe, creneau, date, employesAffectesEO, creneauxUtilises)) {
-            return false;
+          // Identifier les employés éligibles pour ce créneau
+          const employesEligibles = employesRestants.filter(employe => {
+            // Vérifier disponibilité sur ce créneau
+            const disponibilite = disponibilites[employe.id]?.[date];
+            if (!disponibilite || disponibilite === 'non') return false;
+            
+            // Vérifier compatibilité créneau/disponibilité
+            if (disponibilite === 'miTempsMatin' && !['creneau1', 'creneau2'].includes(creneau.id)) {
+              return false;
+            }
+            if (disponibilite === 'miTempsApresMidi' && !['creneau5', 'creneau6'].includes(creneau.id)) {
+              return false;
+            }
+            if (disponibilite === 'matin' && creneau.equipe === 'apresMidi') {
+              return false;
+            }
+            if (disponibilite === 'apresMidi' && creneau.equipe === 'matin') {
+              return false;
+            }
+            
+            // Vérifier que le créneau n'est pas déjà utilisé
+            if (creneauxUtilises.has(`${employe.id}_${creneau.id}`)) {
+              return false;
+            }
+            
+            return true;
+          });
+          
+          if (employesEligibles.length === 0) {
+            // Aucun employé disponible sur ce créneau, passer au suivant
+            continue;
           }
           
-          return true;
-        });
-        
-        if (employesCandidats.length === 0) continue;
-        
-        // Trier par compétence décroissante
-        employesCandidats.sort((a, b) => {
-          const compA = competences[a.id]?.[activiteMaxEcart] || 0;
-          const compB = competences[b.id]?.[activiteMaxEcart] || 0;
-          return compB - compA;
-        });
-        
-        // Prendre le meilleur candidat
-        const meilleurEmploye = employesCandidats[0];
-        
-        // Créer un nouveau poste
-        const nouveauPoste = {
-          id: `poste_${posteId++}`,
-          activite: activiteMaxEcart,
-          creneauId: creneau.id,
-          creneauLabel: creneau.label,
-          equipe: creneau.equipe,
-          heuresDimensionnees: creneau.duree,
-          employeAffecte: meilleurEmploye.id,
-          employeNom: meilleurEmploye.nom,
-          niveauCompetence: competences[meilleurEmploye.id]?.[activiteMaxEcart] || 0,
-          exclusif: false,
-          remplissage: true // Marqueur pour identifier les postes de remplissage
-        };
-        
-        postesGeneres.push(nouveauPoste);
-        
-        // Marquer le créneau comme utilisé
-        creneauxUtilises.add(`${meilleurEmploye.id}_${creneau.id}`);
-        
-        // Mettre à jour le compteur d'affectations
-        if (!compteurAffectations[meilleurEmploye.id][activiteMaxEcart]) {
-          compteurAffectations[meilleurEmploye.id][activiteMaxEcart] = 0;
+          // Séparer employés compétents et non compétents
+          const employesCompetents = employesEligibles.filter(e => 
+            (competences[e.id]?.[activite] || 0) > 0
+          ).sort((a, b) => {
+            // Trier par compétence DESC puis par nombre d'affectations ASC
+            const compA = competences[a.id]?.[activite] || 0;
+            const compB = competences[b.id]?.[activite] || 0;
+            if (compB !== compA) return compB - compA;
+            
+            // Compter les affectations
+            const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
+            const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
+            return affectA - affectB;
+          });
+          
+          const employesNonCompetents = employesEligibles.filter(e => 
+            (competences[e.id]?.[activite] || 0) === 0
+          );
+          
+          // Affecter 1 personne (compétente en priorité)
+          let employeAAffecter = null;
+          let estNonCompetent = false;
+          
+          if (employesCompetents.length > 0) {
+            employeAAffecter = employesCompetents[0];
+          } else if (employesNonCompetents.length > 0) {
+            employeAAffecter = employesNonCompetents[0];
+            estNonCompetent = true;
+          }
+          
+          if (employeAAffecter) {
+            // Créer le poste
+            postesGeneres.push({
+              id: `poste_${posteId++}`,
+              activite: activite,
+              creneauId: creneau.id,
+              creneauLabel: creneau.label,
+              equipe: creneau.equipe,
+              heuresDimensionnees: creneau.duree,
+              employeAffecte: employeAAffecter.id,
+              employeNom: employeAAffecter.nom,
+              niveauCompetence: estNonCompetent ? 0 : (competences[employeAAffecter.id]?.[activite] || 0),
+              exclusif: false,
+              alerte: estNonCompetent // Marqueur pour affichage rouge
+            });
+            
+            creneauxUtilises.add(`${employeAAffecter.id}_${creneau.id}`);
+            besoinRestant -= creneau.duree;
+            affectationsCeTour++;
+            
+            const symbole = estNonCompetent ? '⚠️' : '✓';
+            const detail = estNonCompetent ? 'NON compétent' : `compétent niveau ${competences[employeAAffecter.id]?.[activite]}`;
+            console.log(`  ${symbole} Créneau ${creneau.label}: ${employeAAffecter.nom} (${detail}) → -${creneau.duree}h`);
+          }
         }
-        compteurAffectations[meilleurEmploye.id][activiteMaxEcart]++;
         
-        posteAjoute = true;
-        
-        // Recalculer l'écart pour cette activité
-        let heuresAffectees = 0;
-        postesGeneres.forEach(poste => {
-          if (poste.activite === activiteMaxEcart && poste.employeAffecte) {
-            heuresAffectees += poste.heuresDimensionnees;
-          }
-        });
-        const nouvelEcart = heuresAffectees - heuresNecessaires[activiteMaxEcart];
-        
-        // Si l'écart est maintenant positif ou proche de 0, passer à l'activité suivante
-        if (nouvelEcart >= -0.5) {
+        // Si aucune affectation n'a pu être faite ce tour, arrêter
+        if (affectationsCeTour === 0) {
+          console.log(`  ⚠️ Aucune affectation possible ce tour, arrêt (plus d'employés disponibles)`);
           break;
         }
+        
+        numeroTour++;
       }
       
-      // Si aucun poste n'a pu être ajouté, arrêter
-      if (!posteAjoute) {
-        continuerRemplissage = false;
-      }
-    }
+      const heuresAffectees = besoinActivite - besoinRestant;
+      const delta = heuresAffectees - besoinActivite;
+      console.log(`\nRésumé ${activite}:`);
+      console.log(`  Total tours: ${numeroTour - 1}`);
+      console.log(`  Heures affectées: ${heuresAffectees.toFixed(2)}h / ${besoinActivite.toFixed(2)}h nécessaires`);
+      console.log(`  Delta: ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}h`);
+    });
 
     // Étape finale : Attribuer automatiquement les sous-activités
     const postesAvecSousActivites = attribuerSousActivitesAutomatiquement(postesGeneres);
     const totalHeuresDimensionnees = postesAvecSousActivites.reduce((sum, p) => sum + p.heuresDimensionnees, 0);
+
+    console.log(`\n=== RÉSUMÉ ===`);
+    console.log(`Total postes générés: ${postesAvecSousActivites.length}`);
+    console.log(`Total heures dimensionnées: ${totalHeuresDimensionnees.toFixed(2)}h`);
 
     return {
       volume: volume,
@@ -2597,20 +2782,6 @@ const traiterDisponibilites = () => {
 
   // FONCTIONS POUR GÉRER LES SOUS-ACTIVITÉS
   
-  // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
-  const getSousActiviteNom = (sousActivite) => {
-    return typeof sousActivite === 'string' ? sousActivite : sousActivite.nom;
-  };
-
-  // Helper pour obtenir les créneaux autorisés d'une sous-activité
-  const getSousActiviteCreneaux = (sousActivite) => {
-    if (typeof sousActivite === 'string') {
-      // Format ancien = tous les créneaux par défaut
-      return parametres.creneauxPersonnalises?.map(c => c.id) || [];
-    }
-    return sousActivite.creneauxAutorises || [];
-  };
-  
   // Ajouter une sous-activité à une activité principale
   const ajouterSousActivite = () => {
     if (!nouvelleSousActivite.trim() || !activiteParentSelectionnee) {
@@ -2751,7 +2922,6 @@ const traiterDisponibilites = () => {
           [sousActivite]: !prev.heritageCompetences[sousActivite]
         }
       };
-      setTimeout(() => sauvegarderParametres(), 500);
       return updated;
     });
   };
@@ -2978,9 +3148,10 @@ const traiterDisponibilites = () => {
             volumeAffectation={volumeAffectation}
             setActiveTab={setActiveTab}
             affectationsPostes={affectationsPostes}
+            employes={employes}
+            competences={competences}
             parametres={parametres}
             getActivitePrincipale={getActivitePrincipale}
-            employes={employes}
             couleursActivites={couleursActivites}
             setDimensionnementGenere={setDimensionnementGenere}
             sauvegarderPlanification={sauvegarderPlanification}

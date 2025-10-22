@@ -15,6 +15,11 @@ const CompetencesTab = ({
   parametres
 }) => {
 
+  // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
+  const getSousActiviteNom = (sousActivite) => {
+    return typeof sousActivite === 'string' ? sousActivite : sousActivite.nom;
+  };
+
   // Construire la liste des activités principales à partir des sous-activités (mémorisé)
   const competencesActivites = useMemo(() => {
     return Object.keys(parametres.sousActivites || {});
@@ -35,9 +40,10 @@ const CompetencesTab = ({
       // Ajouter les sous-activités sans héritage pour cette activité
       const sousActivites = parametres.sousActivites[activite] || [];
       sousActivites.forEach(sousAct => {
-        if (parametres.heritageCompetences[sousAct] === false) {
+        const nomSousAct = getSousActiviteNom(sousAct);
+        if (parametres.heritageCompetences[nomSousAct] === false) {
           colonnes.push({
-            nom: sousAct,
+            nom: nomSousAct,
             estSousActivite: true,
             activiteParente: activite
           });

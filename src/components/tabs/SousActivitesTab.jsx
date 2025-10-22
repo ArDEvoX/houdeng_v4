@@ -6,6 +6,7 @@ const SousActivitesTab = ({
   volumeAffectation,
   affectationsPostes,
   employes,
+  competences,
   parametres,
   getActivitePrincipale,
   couleursActivites,
@@ -165,7 +166,8 @@ const SousActivitesTab = ({
       // Répartition round-robin
       groupe.postes.forEach((poste, index) => {
         const sousActiviteIndex = index % sousActivitesPossibles.length;
-        nouvellesAttributions[poste.id] = sousActivitesPossibles[sousActiviteIndex];
+        // Utiliser getSousActiviteNom pour extraire le nom (compatibilité ancien/nouveau format)
+        nouvellesAttributions[poste.id] = getSousActiviteNom(sousActivitesPossibles[sousActiviteIndex]);
       });
     });
 
@@ -351,19 +353,35 @@ const SousActivitesTab = ({
                         .map(sousAct => getSousActiviteNom(sousAct));
                       
                       const sousActiviteActuelle = poste.sousActivite || '';
+                      
+                      // Vérifier si l'employé a la compétence pour cette sous-activité
+                      // Une alerte ne doit apparaître QUE si l'héritage est explicitement désactivé (false)
+                      // ET que l'employé n'a pas la compétence (niveau 0)
+                      const heritageCompetence = parametres.heritageCompetences[sousActiviteActuelle];
+                      const niveauCompetenceSousActivite = competences[employeId]?.[sousActiviteActuelle] || 0;
+                      const alerteCompetence = sousActiviteActuelle && 
+                        heritageCompetence === false && 
+                        niveauCompetenceSousActivite === 0;
 
                       return (
                         <div 
                           key={poste.id} 
-                          className="border-2 rounded-lg p-4"
+                          className={`border-2 rounded-lg p-4 ${alerteCompetence ? 'ring-2 ring-red-500' : ''}`}
                           style={{
-                            borderColor: sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : '#e5e7eb',
-                            backgroundColor: sousActiviteActuelle ? `${couleursActivites[sousActiviteActuelle]}20` : 'white'
+                            borderColor: alerteCompetence ? '#DC2626' : (sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : '#e5e7eb'),
+                            backgroundColor: alerteCompetence ? '#FEE2E2' : (sousActiviteActuelle ? `${couleursActivites[sousActiviteActuelle]}20` : 'white')
                           }}
                         >
                           <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <div className="font-bold text-lg">{employe ? employe.nom : 'Non affecté'}</div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="font-bold text-lg">{employe ? employe.nom : 'Non affecté'}</div>
+                                {alerteCompetence && (
+                                  <span className="text-red-600 text-xl" title="Employé sans compétence pour cette sous-activité">
+                                    ⚠️
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-gray-600">{poste.heuresDimensionnees}h</div>
                             </div>
                             <span 
@@ -375,33 +393,55 @@ const SousActivitesTab = ({
                           </div>
                           
                           <select
-                            className="w-full p-2 border-2 rounded font-medium text-sm"
+                            className={`w-full p-2 border-2 rounded font-medium text-sm ${
+                              alerteCompetence ? 'border-red-600' : ''
+                            }`}
                             style={{
-                              borderColor: sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : '#d1d5db',
-                              backgroundColor: sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : 'white'
+                              borderColor: alerteCompetence ? '#DC2626' : (sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : '#d1d5db'),
+                              backgroundColor: alerteCompetence ? '#FEE2E2' : (sousActiviteActuelle ? couleursActivites[sousActiviteActuelle] : 'white')
                             }}
                             value={sousActiviteActuelle}
                             onChange={(e) => handleAttribuerSousActivite(poste.id, e.target.value)}
                           >
                             <option value="">⚪ Non précisé</option>
-                            {sousActivitesPossibles.map(sousAct => (
-                              <option key={sousAct} value={sousAct}>
-                                {sousAct}
-                              </option>
-                            ))}
+                            {sousActivitesPossibles.map(sousAct => {
+                              const niveauComp = competences[employeId]?.[sousAct] || 0;
+                              const heritage = parametres.heritageCompetences[sousAct];
+                              return (
+                                <option key={sousAct} value={sousAct}>
+                                  {sousAct} {heritage === false ? `(Niv.${niveauComp})` : ''}
+                                </option>
+                              );
+                            })}
                           </select>
 
-                          {sousActiviteActuelle && parametres.heritageCompetences[sousActiviteActuelle] !== undefined && (
-                            <div className="mt-2 text-xs">
-                              <span className={`px-2 py-1 rounded ${
-                                parametres.heritageCompetences[sousActiviteActuelle] 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : 'bg-orange-100 text-orange-800'
-                              }`}>
-                                {parametres.heritageCompetences[sousActiviteActuelle] 
-                                  ? '✓ Hérite compétences' 
-                                  : '✗ Compétences spécifiques'}
-                              </span>
+                          {sousActiviteActuelle && (
+                            <div className="mt-2 space-y-1">
+                              {parametres.heritageCompetences[sousActiviteActuelle] !== undefined && (
+                                <div className="text-xs">
+                                  <span className={`px-2 py-1 rounded ${
+                                    parametres.heritageCompetences[sousActiviteActuelle] 
+                                      ? 'bg-green-100 text-green-800' 
+                                      : 'bg-orange-100 text-orange-800'
+                                  }`}>
+                                    {parametres.heritageCompetences[sousActiviteActuelle] 
+                                      ? '✓ Hérite compétences' 
+                                      : '✗ Compétences spécifiques'}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {alerteCompetence && (
+                                <div className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded border border-red-300">
+                                  ⚠️ Employé SANS compétence requise (Niveau 0)
+                                </div>
+                              )}
+                              
+                              {!alerteCompetence && heritageCompetence === false && niveauCompetenceSousActivite > 0 && (
+                                <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  ✓ Compétence niveau {niveauCompetenceSousActivite}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
