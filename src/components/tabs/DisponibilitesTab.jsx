@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 
 const DisponibilitesTab = ({
   employes,
@@ -9,6 +9,33 @@ const DisponibilitesTab = ({
   setDisponibilitesTexte,
   traiterDisponibilites
 }) => {
+  const scrollbarTopRef = useRef(null);
+  const tableWrapperRef = useRef(null);
+
+  // Synchroniser les scrollbars
+  useEffect(() => {
+    const scrollbarTop = scrollbarTopRef.current;
+    const tableWrapper = tableWrapperRef.current;
+
+    if (!scrollbarTop || !tableWrapper) return;
+
+    const handleScrollbarTop = () => {
+      tableWrapper.scrollLeft = scrollbarTop.scrollLeft;
+    };
+
+    const handleTableWrapper = () => {
+      scrollbarTop.scrollLeft = tableWrapper.scrollLeft;
+    };
+
+    scrollbarTop.addEventListener('scroll', handleScrollbarTop);
+    tableWrapper.addEventListener('scroll', handleTableWrapper);
+
+    return () => {
+      scrollbarTop.removeEventListener('scroll', handleScrollbarTop);
+      tableWrapper.removeEventListener('scroll', handleTableWrapper);
+    };
+  }, []);
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-semibold mb-4">Disponibilités des employés</h2>
@@ -38,11 +65,42 @@ const DisponibilitesTab = ({
         
         <div className="mt-4">
           <h3 className="font-medium mb-2">Tableau des disponibilités:</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border">
+          
+          {/* Scrollbar supérieure sticky */}
+          <div 
+            ref={scrollbarTopRef}
+            className="disponibilites-scrollbar-top"
+            style={{ 
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              position: 'sticky',
+              top: 0,
+              zIndex: 20,
+              backgroundColor: 'white',
+              borderBottom: '2px solid #d1d5db',
+              marginBottom: '0.5rem'
+            }}
+          >
+            <div style={{ 
+              height: '1px',
+              width: `${Math.max(150 + datesDispo.length * 150, 800)}px`
+            }} />
+          </div>
+
+          {/* Wrapper du tableau avec scrollbar */}
+          <div 
+            ref={tableWrapperRef}
+            className="disponibilites-table-wrapper"
+            style={{ 
+              overflowX: 'auto',
+              maxHeight: '600px',
+              position: 'relative'
+            }}
+          >
+            <table className="disponibilites-table min-w-full border">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="px-4 py-2 border">Employé</th>
+                  <th className="px-4 py-2 border sticky-col-dispo">Employé</th>
                   {datesDispo.map(date => (
                     <th key={date} className="px-4 py-2 border">{date}</th>
                   ))}
@@ -51,7 +109,7 @@ const DisponibilitesTab = ({
               <tbody>
                 {employes.map((employe, employeIndex) => (
                   <tr key={employe.id} className={employeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-4 py-2 border font-medium">{employe.nom}</td>
+                    <td className="px-4 py-2 border font-medium sticky-col-dispo">{employe.nom}</td>
                     {datesDispo.map(date => {
                       const dispo = disponibilites[employe.id]?.[date] || 'non';
                       

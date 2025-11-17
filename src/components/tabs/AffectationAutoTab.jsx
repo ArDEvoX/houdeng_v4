@@ -32,6 +32,7 @@ const AffectationAutoTab = ({
   setPlanifications
 }) => {
   const [statutSauvegarde, setStatutSauvegarde] = React.useState(''); // '', 'saving', 'saved', 'error'
+  const [modeAleatoire, setModeAleatoire] = React.useState(false);
   const timeoutSauvegardeRef = useRef(null);
 
   // Fonction de sauvegarde automatique avec debounce
@@ -108,7 +109,7 @@ const AffectationAutoTab = ({
       return;
     }
 
-    const dimensionnement = genererAffectationComplete(volumeAffectation, dateAffectation);
+    const dimensionnement = genererAffectationComplete(volumeAffectation, dateAffectation, modeAleatoire);
     setDimensionnementGenere(dimensionnement);
     
     const affectationsAuto = {};
@@ -178,7 +179,20 @@ const AffectationAutoTab = ({
             />
           </div>
           
-          <div className="flex items-end">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+              <input 
+                type="checkbox"
+                id="modeAleatoire"
+                checked={modeAleatoire}
+                onChange={(e) => setModeAleatoire(e.target.checked)}
+                className="w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="modeAleatoire" className="text-sm cursor-pointer flex items-center gap-1">
+                <span>🎲</span>
+                <span>Affectation aléatoire</span>
+              </label>
+            </div>
             <button 
               className="w-full px-4 py-2 text-white rounded hover:bg-opacity-90"
               style={{ backgroundColor: "#007F61" }}
@@ -329,8 +343,8 @@ const AffectationAutoTab = ({
                       
                       const ordreDisponibilite = {
                         'matin': 1,
-                        'apresMidi': 2,
-                        'miTempsMatin': 3,
+                        'miTempsMatin': 2,
+                        'apresMidi': 3,
                         'miTempsApresMidi': 4
                       };
                       

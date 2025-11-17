@@ -20,7 +20,8 @@ const ParametresTab = ({
   ajouterSousActivite,
   supprimerSousActivite,
   toggleHeritageCompetence,
-  toggleCreneauSousActivite
+  toggleCreneauSousActivite,
+  toggleMemePersonne
 }) => {
 
   // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
@@ -431,19 +432,32 @@ const ParametresTab = ({
                     return (
                       <div key={nomSousAct} className="bg-white p-4 rounded border">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col gap-2">
                             <span className="font-medium text-lg">{nomSousAct}</span>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={parametres.heritageCompetences[nomSousAct] || false}
-                                onChange={() => toggleHeritageCompetence(nomSousAct)}
-                                className="rounded"
-                              />
-                              <span className={parametres.heritageCompetences[nomSousAct] ? 'text-green-600' : 'text-gray-500'}>
-                                {parametres.heritageCompetences[nomSousAct] ? '✓ Hérite des compétences' : 'Compétences spécifiques'}
-                              </span>
-                            </label>
+                            <div className="flex items-center gap-4">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={parametres.heritageCompetences[nomSousAct] || false}
+                                  onChange={() => toggleHeritageCompetence(nomSousAct)}
+                                  className="rounded"
+                                />
+                                <span className={parametres.heritageCompetences[nomSousAct] ? 'text-green-600' : 'text-gray-500'}>
+                                  {parametres.heritageCompetences[nomSousAct] ? '✓ Hérite des compétences' : 'Compétences spécifiques'}
+                                </span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={typeof sousAct === 'object' && sousAct.memepersonne || false}
+                                  onChange={() => toggleMemePersonne(activite, nomSousAct)}
+                                  className="rounded"
+                                />
+                                <span className={typeof sousAct === 'object' && sousAct.memepersonne ? 'text-blue-600 font-medium' : 'text-gray-500'}>
+                                  {typeof sousAct === 'object' && sousAct.memepersonne ? '📌 Même personne sur la journée' : '📌 Même personne'}
+                                </span>
+                              </label>
+                            </div>
                           </div>
                           <button
                             onClick={() => supprimerSousActivite(activite, nomSousAct)}

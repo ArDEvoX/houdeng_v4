@@ -54,7 +54,9 @@ const LogistiqueApp = () => {
   ];
   
   // Fonction de connexion
-  const seConnecter = () => {
+  const seConnecter = (e) => {
+    if (e) e.preventDefault(); // Empêcher le rechargement de la page si appelé depuis un formulaire
+    
     const utilisateur = utilisateurs.find(u => u.id === identifiant && u.mdp === motDePasse);
     
     if (utilisateur) {
@@ -984,7 +986,12 @@ const traiterDisponibilites = () => {
 
       employesCrees++;
       
-      setEmployes(prev => [...prev, employe]);
+      setEmployes(prev => {
+        // Ajouter le nouvel employé et trier alphabétiquement
+        return [...prev, employe].sort((a, b) => 
+          a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+        );
+      });
       
       // Initialiser ses compétences
       setCompetences(prev => {
@@ -1285,7 +1292,12 @@ const traiterDisponibilites = () => {
       nom: nouvelEmployeNom
     };
     
-    setEmployes([...employes, newEmploye]);
+    // Ajouter et trier alphabétiquement
+    const nouveauxEmployes = [...employes, newEmploye].sort((a, b) => 
+      a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+    );
+    
+    setEmployes(nouveauxEmployes);
     setNouvelEmployeNom("");
     
     // Initialiser les compétences pour ce nouvel employé
@@ -1788,7 +1800,9 @@ const traiterDisponibilites = () => {
 
   // Fonction pour attribuer automatiquement les sous-activités de manière équitable
   const attribuerSousActivitesAutomatiquement = (postesGeneres) => {
-    // Grouper les postes par activité principale (sans créneau cette fois)
+    // PHASE 1: Attribution initiale en round-robin simple (même logique qu'étape 5)
+    
+    // Grouper les postes par activité principale ET créneau
     const groupes = {};
     
     postesGeneres.forEach(poste => {
@@ -1796,145 +1810,185 @@ const traiterDisponibilites = () => {
       const sousActivitesPossibles = parametres.sousActivites[activitePrincipale] || [];
       
       // Ne traiter que les activités qui ont des sous-activités configurées
-      if (sousActivitesPossibles.length > 0) {
-      // Filtrer les sous-activités autorisées pour le créneau de ce poste
-      const sousActivitesAutoriseesCreneaux = sousActivitesPossibles.filter(sousAct => {
-        const creneauxAutorises = getSousActiviteCreneaux(sousAct);
-        const estAutorise = creneauxAutorises.includes(poste.creneauId);
-        return estAutorise;
-      });
-      
-      // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes les sous-activités (fallback)
-      const sousActivitesAUtiliser = sousActivitesAutoriseesCreneaux.length > 0 
-        ? sousActivitesAutoriseesCreneaux 
-        : sousActivitesPossibles;
+      if (sousActivitesPossibles.length > 0 && poste.employeAffecte) {
+        // Filtrer les sous-activités autorisées pour le créneau de ce poste
+        const sousActivitesAutoriseesCreneaux = sousActivitesPossibles.filter(sousAct => {
+          const creneauxAutorises = getSousActiviteCreneaux(sousAct);
+          return creneauxAutorises.includes(poste.creneauId);
+        });
         
-        // Grouper uniquement par activité principale
-        const key = activitePrincipale;
+        // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes les sous-activités (fallback)
+        const sousActivitesAUtiliser = sousActivitesAutoriseesCreneaux.length > 0 
+          ? sousActivitesAutoriseesCreneaux 
+          : sousActivitesPossibles;
+        
+        // Grouper par activité principale ET créneau (clé combinée)
+        const key = `${activitePrincipale}_${poste.creneauId}`;
         
         if (!groupes[key]) {
           groupes[key] = {
             activite: activitePrincipale,
+            creneau: poste.creneauId,
             sousActivites: sousActivitesAUtiliser,
-            postesParEmploye: {} // Grouper les postes par employé
+            postes: []
           };
         }
         
-        // Grouper les postes par employé affecté
-        const employeId = poste.employeAffecte;
-        if (employeId) {
-          if (!groupes[key].postesParEmploye[employeId]) {
-            groupes[key].postesParEmploye[employeId] = [];
-          }
-          groupes[key].postesParEmploye[employeId].push(poste);
-        }
+        groupes[key].postes.push(poste);
       }
     });
     
-    // Pour chaque activité principale, attribuer les sous-activités de manière équilibrée
-    let indexGlobal = 0; // Compteur global pour assurer la rotation entre employés
-    
+    // Pour chaque groupe (activité + créneau), attribuer les sous-activités en round-robin pur
     Object.values(groupes).forEach(groupe => {
-      // Séparer les sous-activités selon leur héritage de compétences
-      const sousActivitesAvecHeritage = [];
-      const sousActivitesSansHeritage = [];
-      
-      groupe.sousActivites.forEach(sousAct => {
-        const nom = getSousActiviteNom(sousAct);
-        if (parametres.heritageCompetences[nom] === false) {
-          sousActivitesSansHeritage.push(sousAct);
-        } else {
-          sousActivitesAvecHeritage.push(sousAct);
-        }
+      // Trier les postes par employé pour cohérence visuelle
+      groupe.postes.sort((a, b) => {
+        const nomA = employes.find(e => e.id === a.employeAffecte)?.nom || '';
+        const nomB = employes.find(e => e.id === b.employeAffecte)?.nom || '';
+        return nomA.localeCompare(nomB);
       });
       
-      // Trier les employés par nombre de postes (du plus au moins) pour équilibrer
-      const employesOrdonnes = Object.entries(groupe.postesParEmploye)
-        .sort((a, b) => b[1].length - a[1].length);
-      
-      employesOrdonnes.forEach(([employeId, postesEmploye]) => {
-        const employe = employes.find(e => e.id === employeId);
+      // Attribution en ROUND-ROBIN SIMPLE (comme dans SousActivitesTab)
+      // Pas de séparation par héritage, pas de filtrage par compétence
+      groupe.postes.forEach((poste, index) => {
+        const employeId = poste.employeAffecte;
         
-        // Trier les postes de cet employé par créneau pour cohérence
-        postesEmploye.sort((a, b) => {
-          const creneauA = parseInt(a.creneauId.replace('creneau', ''));
-          const creneauB = parseInt(b.creneauId.replace('creneau', ''));
-          return creneauA - creneauB;
-        });
+        // Round-robin simple : index % nombre de sous-activités
+        const sousActiviteIndex = index % groupe.sousActivites.length;
+        const sousActiviteAttribuee = getSousActiviteNom(groupe.sousActivites[sousActiviteIndex]);
         
-        // NOUVELLE LOGIQUE : Prioriser les sous-activités selon les compétences ET les créneaux
-        postesEmploye.forEach((poste, indexLocal) => {
-          let sousActiviteAttribuee = null;
-          let alerteCompetence = false;
-          
-          // Filtrer les sous-activités autorisées pour ce créneau spécifique
-          const sousActivitesCreneauActuel = groupe.sousActivites.filter(sousAct => {
-            const creneauxAutorises = getSousActiviteCreneaux(sousAct);
-            const estAutorise = creneauxAutorises.includes(poste.creneauId);
-            return estAutorise;
-          });
-          
-          // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes
-          const sousActivitesAChoisir = sousActivitesCreneauActuel.length > 0 
-            ? sousActivitesCreneauActuel 
-            : groupe.sousActivites;
-          
-          // Séparer selon l'héritage parmi les sous-activités disponibles pour ce créneau
-          const avecHeritageCreneauActuel = sousActivitesAChoisir.filter(sa => {
-            const nom = getSousActiviteNom(sa);
-            return parametres.heritageCompetences[nom] !== false;
-          });
-          
-          const sansHeritageCreneauActuel = sousActivitesAChoisir.filter(sa => {
-            const nom = getSousActiviteNom(sa);
-            return parametres.heritageCompetences[nom] === false;
-          });
-          
-          // Si il y a des sous-activités SANS héritage pour ce créneau
-          if (sansHeritageCreneauActuel.length > 0) {
-            // Chercher une sous-activité sans héritage pour laquelle l'employé a la compétence
-            const sousActivitesCompetentes = sansHeritageCreneauActuel.filter(sousAct => {
-              const nom = getSousActiviteNom(sousAct);
-              return (competences[employeId]?.[nom] || 0) > 0;
-            });
-            
-            if (sousActivitesCompetentes.length > 0) {
-              // Attribution en rotation parmi celles où il a la compétence
-              const index = (indexGlobal + indexLocal) % sousActivitesCompetentes.length;
-              sousActiviteAttribuee = getSousActiviteNom(sousActivitesCompetentes[index]);
-            } else {
-              // Aucune compétence pour les sous-activités sans héritage
-              // Attribuer quand même mais avec alerte
-              const index = (indexGlobal + indexLocal) % sansHeritageCreneauActuel.length;
-              sousActiviteAttribuee = getSousActiviteNom(sansHeritageCreneauActuel[index]);
-              alerteCompetence = true; // Marquer comme alerte
-            }
-          } else if (avecHeritageCreneauActuel.length > 0) {
-            // Toutes les sous-activités héritent, attribution normale
-            const index = (indexGlobal + indexLocal) % avecHeritageCreneauActuel.length;
-            sousActiviteAttribuee = getSousActiviteNom(avecHeritageCreneauActuel[index]);
-          } else if (sousActivitesAChoisir.length > 0) {
-            // Fallback : attribuer n'importe quelle sous-activité disponible
-            const index = (indexGlobal + indexLocal) % sousActivitesAChoisir.length;
-            sousActiviteAttribuee = getSousActiviteNom(sousActivitesAChoisir[index]);
-          }
-          
-          if (sousActiviteAttribuee) {
-            poste.sousActivite = sousActiviteAttribuee;
-            
-            // Si pas de compétence pour une sous-activité sans héritage, marquer l'alerte
-            if (alerteCompetence) {
-              poste.alerteSousActivite = true;
-            }
-          }
-        });
+        poste.sousActivite = sousActiviteAttribuee;
         
-        // Incrémenter le compteur global pour le prochain employé
-        indexGlobal += postesEmploye.length;
+        // Vérifier si alerte nécessaire (sous-activité sans héritage + employé sans compétence)
+        const heritageCompetence = parametres.heritageCompetences[sousActiviteAttribuee];
+        const niveauCompetence = competences[employeId]?.[sousActiviteAttribuee] || 0;
+        
+        if (heritageCompetence === false && niveauCompetence === 0) {
+          poste.alerteSousActivite = true;
+        }
       });
     });
 
+    // PHASE 2: Optimisation - Essayer d'échanger les affectations pour réduire les alertes
+    
+    // Identifier tous les postes avec alertes de compétences
+    const postesAvecAlertes = postesGeneres.filter(p => p.alerteSousActivite);
+    
+    // Pour chaque poste avec alerte, essayer de trouver un échange bénéfique
+    postesAvecAlertes.forEach(posteAlerte => {
+      const activitePrincipale = getActivitePrincipale(posteAlerte.activite);
+      const sousActiviteRequise = posteAlerte.sousActivite;
+      const employeNonCompetent = posteAlerte.employeAffecte;
+      const creneauCible = posteAlerte.creneauId;
+      
+      // Chercher tous les autres postes sur le même créneau et même activité principale
+      const postesMemeCreneau = postesGeneres.filter(p => 
+        p.creneauId === creneauCible &&
+        getActivitePrincipale(p.activite) === activitePrincipale &&
+        p.id !== posteAlerte.id &&
+        p.employeAffecte // A un employé affecté
+      );
+      
+      // Chercher un employé compétent pour échanger
+      for (const posteCandidat of postesMemeCreneau) {
+        const employeCandidat = posteCandidat.employeAffecte;
+        
+        // Vérifier si l'employé candidat a la compétence pour la sous-activité requise
+        const candidatCompetentPourAlerte = (competences[employeCandidat]?.[sousActiviteRequise] || 0) > 0;
+        
+        if (!candidatCompetentPourAlerte) {
+          continue; // Cet employé ne peut pas aider
+        }
+        
+        // Vérifier si l'employé non compétent peut faire la sous-activité du candidat
+        const sousActiviteCandidat = posteCandidat.sousActivite;
+        
+        // Si la sous-activité du candidat a l'héritage, l'échange est toujours possible
+        const heritageCandidat = parametres.heritageCompetences[sousActiviteCandidat];
+        const nonCompetentPeutFaireCandidatSousActivite = heritageCandidat !== false || 
+          (competences[employeNonCompetent]?.[sousActiviteCandidat] || 0) > 0;
+        
+        if (!nonCompetentPeutFaireCandidatSousActivite) {
+          continue; // L'échange créerait une nouvelle alerte
+        }
+        
+        // Vérifier que le candidat n'a pas déjà d'alerte (pour éviter de créer un cycle)
+        if (posteCandidat.alerteSousActivite) {
+          continue;
+        }
+        
+        // ÉCHANGE POSSIBLE ! Procéder à l'échange
+        
+        // Échanger les employés
+        const temp = posteAlerte.employeAffecte;
+        posteAlerte.employeAffecte = posteCandidat.employeAffecte;
+        posteCandidat.employeAffecte = temp;
+        
+        // Échanger les noms d'employés
+        const tempNom = posteAlerte.employeNom;
+        posteAlerte.employeNom = posteCandidat.employeNom;
+        posteCandidat.employeNom = tempNom;
+        
+        // Mettre à jour les niveaux de compétence
+        posteAlerte.niveauCompetence = competences[posteAlerte.employeAffecte]?.[activitePrincipale] || 0;
+        posteCandidat.niveauCompetence = competences[posteCandidat.employeAffecte]?.[activitePrincipale] || 0;
+        
+        // Retirer l'alerte du poste qui avait le problème
+        delete posteAlerte.alerteSousActivite;
+        
+        // Vérifier si le candidat a maintenant besoin d'une alerte
+        if (heritageCandidat === false && (competences[posteCandidat.employeAffecte]?.[sousActiviteCandidat] || 0) === 0) {
+          posteCandidat.alerteSousActivite = true;
+        }
+        
+        // Échange effectué, passer au prochain poste avec alerte
+        break;
+      }
+    });
+
     return postesGeneres;
+  };
+
+  // FONCTIONS UTILITAIRES POUR LE MÉLANGE ALÉATOIRE
+  
+  // Fonction pour mélanger un tableau (algorithme Fisher-Yates)
+  const melangerTableau = (tableau) => {
+    const copie = [...tableau];
+    for (let i = copie.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copie[i], copie[j]] = [copie[j], copie[i]];
+    }
+    return copie;
+  };
+
+  // Fonction pour trier avec option de mélange aléatoire par niveau de compétence
+  const trierEmployesAvecAleatoire = (employes, activite, useAleatoire, postesGeneres) => {
+    if (!useAleatoire) {
+      // Mode déterministe (actuel) : tri par compétence puis nombre d'affectations
+      return [...employes].sort((a, b) => {
+        const compA = competences[a.id]?.[activite] || 0;
+        const compB = competences[b.id]?.[activite] || 0;
+        if (compB !== compA) return compB - compA;
+        
+        const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
+        const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
+        return affectA - affectB;
+      });
+    }
+    
+    // Mode aléatoire : grouper par niveau de compétence puis mélanger chaque groupe
+    const groupes = { 3: [], 2: [], 1: [], 0: [] };
+    employes.forEach(emp => {
+      const niveau = competences[emp.id]?.[activite] || 0;
+      groupes[niveau].push(emp);
+    });
+    
+    // Mélanger chaque groupe et reconstituer le tableau
+    return [
+      ...melangerTableau(groupes[3]),
+      ...melangerTableau(groupes[2]),
+      ...melangerTableau(groupes[1]),
+      ...melangerTableau(groupes[0])
+    ];
   };
 
   // NOUVELLE STRATÉGIE D'AFFECTATION AUTOMATIQUE
@@ -2132,7 +2186,7 @@ const traiterDisponibilites = () => {
   };
 
   // NOUVELLE FONCTION : Générer l'affectation complète avec la nouvelle stratégie
-  const genererAffectationComplete = (volume, date = dateAffectation) => {
+  const genererAffectationComplete = (volume, date = dateAffectation, modeAleatoire = false) => {
     if (!volume || volume <= 0) return null;
     if (!date) {
       console.error('Date non fournie pour l\'affectation');
@@ -2168,10 +2222,11 @@ const traiterDisponibilites = () => {
     const besoinEO = heuresNecessaires['EO'] || 0;
     
     if (besoinEO > 0) {
-      // Employés compétents EO triés par compétence décroissante
-      const employesEO = employesDisponibles
-        .filter(e => (competences[e.id]?.['EO'] || 0) > 0)
-        .sort((a, b) => (competences[b.id]?.['EO'] || 0) - (competences[a.id]?.['EO'] || 0));
+      // Employés compétents EO triés (avec option aléatoire)
+      const employesEOCompetents = employesDisponibles
+        .filter(e => (competences[e.id]?.['EO'] || 0) > 0);
+      
+      const employesEO = trierEmployesAvecAleatoire(employesEOCompetents, 'EO', modeAleatoire, []);
 
       let heuresAffecteesEO = 0;
       
@@ -2293,23 +2348,21 @@ const traiterDisponibilites = () => {
         }
         
         // Séparer employés compétents et non compétents
-        const employesCompetents = employesEligibles.filter(e => 
+        const employesCompetentsFiltre = employesEligibles.filter(e => 
           (competences[e.id]?.[activite] || 0) > 0
-        ).sort((a, b) => {
-          // Trier par compétence DESC puis par nombre d'affectations ASC
-          const compA = competences[a.id]?.[activite] || 0;
-          const compB = competences[b.id]?.[activite] || 0;
-          if (compB !== compA) return compB - compA;
-          
-          // Compter les affectations
-          const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
-          const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
-          return affectA - affectB;
-        });
+        );
         
-        const employesNonCompetents = employesEligibles.filter(e => 
+        // Utiliser le tri avec option aléatoire
+        const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres);
+        
+        const employesNonCompetentsFiltre = employesEligibles.filter(e => 
           (competences[e.id]?.[activite] || 0) === 0
         );
+        
+        // Mélanger aussi les non compétents si mode aléatoire activé
+        const employesNonCompetents = modeAleatoire 
+          ? melangerTableau(employesNonCompetentsFiltre)
+          : employesNonCompetentsFiltre;
         
         console.log(`  Employés compétents: ${employesCompetents.length}, non compétents: ${employesNonCompetents.length}`);
         
@@ -2436,23 +2489,21 @@ const traiterDisponibilites = () => {
           }
           
           // Séparer employés compétents et non compétents
-          const employesCompetents = employesEligibles.filter(e => 
+          const employesCompetentsFiltre = employesEligibles.filter(e => 
             (competences[e.id]?.[activite] || 0) > 0
-          ).sort((a, b) => {
-            // Trier par compétence DESC puis par nombre d'affectations ASC
-            const compA = competences[a.id]?.[activite] || 0;
-            const compB = competences[b.id]?.[activite] || 0;
-            if (compB !== compA) return compB - compA;
-            
-            // Compter les affectations
-            const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
-            const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
-            return affectA - affectB;
-          });
+          );
           
-          const employesNonCompetents = employesEligibles.filter(e => 
+          // Utiliser le tri avec option aléatoire
+          const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres);
+          
+          const employesNonCompetentsFiltre = employesEligibles.filter(e => 
             (competences[e.id]?.[activite] || 0) === 0
           );
+          
+          // Mélanger aussi les non compétents si mode aléatoire activé
+          const employesNonCompetents = modeAleatoire 
+            ? melangerTableau(employesNonCompetentsFiltre)
+            : employesNonCompetentsFiltre;
           
           // Affecter 1 personne (compétente en priorité)
           let employeAAffecter = null;
@@ -2809,7 +2860,8 @@ const traiterDisponibilites = () => {
       // Créer la nouvelle sous-activité au nouveau format avec les créneaux de l'activité principale
       const nouvelleSousActiviteObj = {
         nom: nomSousActivite,
-        creneauxAutorises: creneauxAutorisesActivitePrincipale
+        creneauxAutorises: creneauxAutorisesActivitePrincipale,
+        memepersonne: false // Par défaut, pas de contrainte "même personne"
       };
       
       const updated = {
@@ -2926,6 +2978,42 @@ const traiterDisponibilites = () => {
     });
   };
 
+  // Basculer la contrainte "même personne" pour une sous-activité
+  const toggleMemePersonne = (activiteParent, sousActiviteNom) => {
+    setParametres(prev => {
+      const sousActivites = prev.sousActivites[activiteParent] || [];
+      
+      const nouvellesSousActivites = sousActivites.map(sa => {
+        const nom = getSousActiviteNom(sa);
+        
+        if (nom === sousActiviteNom) {
+          // Convertir au nouveau format si nécessaire
+          const sousActiviteObj = typeof sa === 'string' 
+            ? { nom: sa, creneauxAutorises: prev.creneauxPersonnalises?.map(c => c.id) || [], memepersonne: false }
+            : { ...sa };
+          
+          // Basculer la propriété memepersonne
+          sousActiviteObj.memepersonne = !sousActiviteObj.memepersonne;
+          
+          return sousActiviteObj;
+        }
+        
+        return sa;
+      });
+      
+      const updated = {
+        ...prev,
+        sousActivites: {
+          ...prev.sousActivites,
+          [activiteParent]: nouvellesSousActivites
+        }
+      };
+      
+      setTimeout(() => sauvegarderParametres(), 500);
+      return updated;
+    });
+  };
+
   // Fonction pour supprimer un poste
   const supprimerPoste = (posteId) => {
     if (dimensionnementGenere) {
@@ -3038,6 +3126,7 @@ const traiterDisponibilites = () => {
       supprimerSousActivite={supprimerSousActivite}
       toggleHeritageCompetence={toggleHeritageCompetence}
       toggleCreneauSousActivite={toggleCreneauSousActivite}
+      toggleMemePersonne={toggleMemePersonne}
     />
   );
 
@@ -3246,7 +3335,7 @@ const traiterDisponibilites = () => {
               </div>
             )}
             
-            <div className="space-y-4">
+            <form onSubmit={seConnecter} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Identifiant</label>
                 <input 
@@ -3254,6 +3343,7 @@ const traiterDisponibilites = () => {
                   className="w-full p-2 border rounded"
                   value={identifiant}
                   onChange={(e) => setIdentifiant(e.target.value)}
+                  autoFocus
                 />
               </div>
               <div>
@@ -3266,25 +3356,26 @@ const traiterDisponibilites = () => {
                 />
               </div>
               <button 
+                type="submit"
                 className="w-full py-2 text-white rounded hover:bg-opacity-90"
                 style={{ backgroundColor: "#007F61" }}
-                onClick={seConnecter}
               >
                 Se connecter
               </button>
-              
-              <div className="text-center mt-4">
-                <p className="text-gray-500 mb-2">ou</p>
-                <button 
-                  className="w-full py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                  onClick={() => {
-                    setEstConnecte(true);
-                    setEstAdmin(false);
-                  }}
-                >
-                  Accéder en mode standard (sans connexion)
-                </button>
-              </div>
+            </form>
+            
+            <div className="text-center mt-4">
+              <p className="text-gray-500 mb-2">ou</p>
+              <button 
+                type="button"
+                className="w-full py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                onClick={() => {
+                  setEstConnecte(true);
+                  setEstAdmin(false);
+                }}
+              >
+                Accéder en mode standard (sans connexion)
+              </button>
             </div>
           </div>
         </div>

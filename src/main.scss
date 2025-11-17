@@ -42,38 +42,53 @@
 }
 
 /* Colonnes fixes - approche simplifiée */
+/* Appliquer le style de base aux en-têtes */
 .competences-table th:first-child,
-.competences-table td:first-child {
+.competences-table th:nth-child(2) {
+  background-color: #f3f4f6;
+  min-width: 6rem;
+}
+
+.competences-table th:nth-child(2) {
+  min-width: 8rem;
+}
+
+/* Double sticky (horizontal + vertical) pour les en-têtes des colonnes fixes */
+.competences-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  background-color: #f3f4f6;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+.competences-table thead th:nth-child(2) {
+  position: sticky;
+  left: 6rem;
+  top: 0;
+  z-index: 30;
+  background-color: #f3f4f6;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Colonnes fixes UNIQUEMENT pour les cellules du tbody */
+.competences-table tbody td:first-child {
   position: sticky;
   left: 0;
   z-index: 20;
-  background-color: #f3f4f6;
+  background-color: white;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   min-width: 6rem;
 }
 
-.competences-table th:nth-child(2),
-.competences-table td:nth-child(2) {
+.competences-table tbody td:nth-child(2) {
   position: sticky;
   left: 6rem;
   z-index: 20;
-  background-color: #f3f4f6;
+  background-color: white;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   min-width: 8rem;
-}
-
-/* En-tête des colonnes fixes avec z-index plus élevé */
-.competences-table thead th:first-child,
-.competences-table thead th:nth-child(2) {
-  z-index: 30;
-  background-color: #f3f4f6;
-}
-
-/* Cellules du corps pour les colonnes fixes */
-.competences-table tbody td:first-child,
-.competences-table tbody td:nth-child(2) {
-  background-color: white;
-  z-index: 20;
 }
 
 /* Lignes alternées pour les colonnes fixes */
@@ -124,4 +139,82 @@
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* Styles pour le tableau de disponibilités */
+.disponibilites-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* En-têtes sticky verticalement */
+.disponibilites-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background-color: #f3f4f6;
+}
+
+/* Colonne sticky pour les noms d'employés */
+.sticky-col-dispo {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background-color: #f3f4f6;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 150px;
+}
+
+/* En-tête sticky avec double fixation (vertical + horizontal) */
+.disponibilites-table thead th.sticky-col-dispo {
+  z-index: 25;
+}
+
+/* Colonne sticky pour les cellules du tbody */
+.disponibilites-table tbody td.sticky-col-dispo {
+  background-color: white;
+}
+
+/* Alternance de couleurs pour les lignes paires */
+.disponibilites-table tbody tr:nth-child(even) td.sticky-col-dispo {
+  background-color: #f9fafb;
+}
+
+/* Scrollbar supérieure */
+.disponibilites-scrollbar-top::-webkit-scrollbar {
+  height: 12px;
+}
+
+.disponibilites-scrollbar-top::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 6px;
+}
+
+.disponibilites-scrollbar-top::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.disponibilites-scrollbar-top::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Wrapper du tableau */
+.disponibilites-table-wrapper::-webkit-scrollbar {
+  height: 12px;
+}
+
+.disponibilites-table-wrapper::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 6px;
+}
+
+.disponibilites-table-wrapper::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.disponibilites-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
