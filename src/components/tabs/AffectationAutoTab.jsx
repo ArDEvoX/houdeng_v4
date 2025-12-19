@@ -18,6 +18,7 @@ const AffectationAutoTab = ({
   disponibilites,
   parametres,
   couleursActivites,
+  obtenirCouleurActivite,
   genererAffectationComplete,
   calculerEcarts,
   analyserDisponibilites,
@@ -409,11 +410,18 @@ const AffectationAutoTab = ({
                             const activiteActuelle = posteActuel?.activite || null;
                             const estAlerteNonCompetent = posteActuel?.alerte || false;
 
+                            // Construction de la liste des activités possibles pour ce créneau
+                            const activitesRecurrentesCreneau = (parametres.activitesRecurrentes || [])
+                              .filter(actRec => actRec.creneaux.some(c => c.creneauId === creneau.id && c.nombrePersonnes > 0))
+                              .map(actRec => actRec.nom);
+
                             const activitesPossibles = [
                               ...creneau.activitesAutorisees,
-                              ...activitesPersonnalisees
+                              ...activitesPersonnalisees,
+                              ...activitesRecurrentesCreneau
                             ].filter(activite => {
-                              if (activitesPersonnalisees.includes(activite)) {
+                              // Les activités personnalisées et récurrentes sont toujours disponibles
+                              if (activitesPersonnalisees.includes(activite) || activitesRecurrentesCreneau.includes(activite)) {
                                 return true;
                               }
                               const niveauCompetence = competences[employe.id]?.[activite] || 0;
@@ -430,7 +438,7 @@ const AffectationAutoTab = ({
                                       activiteActuelle ? 'font-medium' : ''
                                     } ${estAlerteNonCompetent ? 'border-2 border-red-600' : ''}`}
                                     style={{
-                                      backgroundColor: estAlerteNonCompetent ? '#FEE2E2' : (activiteActuelle ? couleursActivites[activiteActuelle] : 'white'),
+                                      backgroundColor: estAlerteNonCompetent ? '#FEE2E2' : (activiteActuelle ? obtenirCouleurActivite(activiteActuelle) : 'white'),
                                       color: estAlerteNonCompetent ? '#991B1B' : 'inherit'
                                     }}
                                     value={activiteActuelle || ''}

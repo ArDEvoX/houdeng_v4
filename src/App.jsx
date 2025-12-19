@@ -97,6 +97,7 @@ const LogistiqueApp = () => {
     pourcentagePickingTrad: 27.3,
     facteurHeuresPersonne: 6.35,
     productiviteCible: 100,
+    activitesRecurrentes: [],
     sousActivites: {
       'PICKING FRIGO': [],
       'CONTRÔLE': [],
@@ -306,6 +307,15 @@ const LogistiqueApp = () => {
 
   // Fonction pour obtenir la couleur d'une activité ou sous-activité
   const obtenirCouleurActivite = (activite) => {
+    // Vérifier d'abord si c'est une activité récurrente
+    const estRecurrente = (parametres.activitesRecurrentes || []).some(
+      actRec => actRec.nom === activite
+    );
+    
+    if (estRecurrente) {
+      return '#E9D5FF'; // Violet/lavande clair pour les activités récurrentes
+    }
+
     // Si c'est une activité principale, retourner sa couleur de base
     if (couleursActivitesBase[activite]) {
       return couleursActivitesBase[activite];
@@ -1800,9 +1810,9 @@ const traiterDisponibilites = () => {
 
   // Fonction pour attribuer automatiquement les sous-activités de manière équitable
   const attribuerSousActivitesAutomatiquement = (postesGeneres) => {
-    // PHASE 1: Attribution initiale en round-robin simple (même logique qu'étape 5)
+    // PHASE 1: Attribution initiale - Grouper par employé pour garder la même sous-activité sur toute la journée
     
-    // Grouper les postes par activité principale ET créneau
+    // Grouper les postes par activité principale ET employé (au lieu de créneau)
     const groupes = {};
     
     postesGeneres.forEach(poste => {
@@ -1811,25 +1821,14 @@ const traiterDisponibilites = () => {
       
       // Ne traiter que les activités qui ont des sous-activités configurées
       if (sousActivitesPossibles.length > 0 && poste.employeAffecte) {
-        // Filtrer les sous-activités autorisées pour le créneau de ce poste
-        const sousActivitesAutoriseesCreneaux = sousActivitesPossibles.filter(sousAct => {
-          const creneauxAutorises = getSousActiviteCreneaux(sousAct);
-          return creneauxAutorises.includes(poste.creneauId);
-        });
-        
-        // Si aucune sous-activité n'est autorisée pour ce créneau, utiliser toutes les sous-activités (fallback)
-        const sousActivitesAUtiliser = sousActivitesAutoriseesCreneaux.length > 0 
-          ? sousActivitesAutoriseesCreneaux 
-          : sousActivitesPossibles;
-        
-        // Grouper par activité principale ET créneau (clé combinée)
-        const key = `${activitePrincipale}_${poste.creneauId}`;
+        // Grouper par activité principale ET employé (clé combinée)
+        const key = `${activitePrincipale}_${poste.employeAffecte}`;
         
         if (!groupes[key]) {
           groupes[key] = {
             activite: activitePrincipale,
-            creneau: poste.creneauId,
-            sousActivites: sousActivitesAUtiliser,
+            employeId: poste.employeAffecte,
+            sousActivites: sousActivitesPossibles,
             postes: []
           };
         }
@@ -1838,23 +1837,41 @@ const traiterDisponibilites = () => {
       }
     });
     
-    // Pour chaque groupe (activité + créneau), attribuer les sous-activités en round-robin pur
+    // Compteur global pour distribuer équitablement les sous-activités entre les employés
+    const compteurSousActivites = {};
+    
+    // Pour chaque groupe (activité + employé), attribuer LA MÊME sous-activité à tous les postes
     Object.values(groupes).forEach(groupe => {
-      // Trier les postes par employé pour cohérence visuelle
-      groupe.postes.sort((a, b) => {
-        const nomA = employes.find(e => e.id === a.employeAffecte)?.nom || '';
-        const nomB = employes.find(e => e.id === b.employeAffecte)?.nom || '';
-        return nomA.localeCompare(nomB);
+      const activitePrincipale = groupe.activite;
+      
+      // Initialiser le compteur pour cette activité si nécessaire
+      if (!compteurSousActivites[activitePrincipale]) {
+        compteurSousActivites[activitePrincipale] = 0;
+      }
+      
+      // Filtrer les sous-activités autorisées pour tous les créneaux de cet employé
+      const creneauxEmploye = groupe.postes.map(p => p.creneauId);
+      const sousActivitesAutorisees = groupe.sousActivites.filter(sousAct => {
+        const creneauxAutorises = getSousActiviteCreneaux(sousAct);
+        // La sous-activité doit être autorisée sur AU MOINS UN des créneaux de l'employé
+        return creneauxEmploye.some(creneauId => creneauxAutorises.includes(creneauId));
       });
       
-      // Attribution en ROUND-ROBIN SIMPLE (comme dans SousActivitesTab)
-      // Pas de séparation par héritage, pas de filtrage par compétence
-      groupe.postes.forEach((poste, index) => {
+      // Si aucune sous-activité n'est autorisée, utiliser toutes les sous-activités (fallback)
+      const sousActivitesAUtiliser = sousActivitesAutorisees.length > 0 
+        ? sousActivitesAutorisees 
+        : groupe.sousActivites;
+      
+      // Choisir la sous-activité selon le compteur (round-robin global)
+      const sousActiviteIndex = compteurSousActivites[activitePrincipale] % sousActivitesAUtiliser.length;
+      const sousActiviteAttribuee = getSousActiviteNom(sousActivitesAUtiliser[sousActiviteIndex]);
+      
+      // Incrémenter le compteur pour le prochain employé
+      compteurSousActivites[activitePrincipale]++;
+      
+      // Attribuer la MÊME sous-activité à TOUS les postes de cet employé
+      groupe.postes.forEach(poste => {
         const employeId = poste.employeAffecte;
-        
-        // Round-robin simple : index % nombre de sous-activités
-        const sousActiviteIndex = index % groupe.sousActivites.length;
-        const sousActiviteAttribuee = getSousActiviteNom(groupe.sousActivites[sousActiviteIndex]);
         
         poste.sousActivite = sousActiviteAttribuee;
         
@@ -2218,6 +2235,94 @@ const traiterDisponibilites = () => {
     
     const creneauxHoraires = parametres.creneauxPersonnalises || [];
 
+    // ===== PHASE 0 : Activités récurrentes configurées =====
+    let postesRecurrentsCreés = 0;
+    
+    (parametres.activitesRecurrentes || []).forEach((activiteRec) => {
+      activiteRec.creneaux.forEach((config) => {
+        if (config.nombrePersonnes > 0) {
+          const creneau = creneauxHoraires.find(c => c.id === config.creneauId);
+          
+          if (creneau) {
+            // Créer X postes selon la configuration
+            for (let i = 0; i < config.nombrePersonnes; i++) {
+              postesGeneres.push({
+                id: `poste_${posteId++}`,
+                activite: activiteRec.nom,
+                creneauId: creneau.id,
+                creneauLabel: creneau.label,
+                equipe: creneau.equipe,
+                heuresDimensionnees: creneau.duree,
+                employeAffecte: null,
+                employeNom: '',
+                niveauCompetence: 0,
+                exclusif: false,
+                recurrente: true
+              });
+              postesRecurrentsCreés++;
+            }
+          }
+        }
+      });
+    });
+
+    // PHASE 0B : Affectation automatique des postes récurrents
+    if (postesRecurrentsCreés > 0) {
+      // Récupérer tous les postes récurrents créés
+      const postesRecurrents = postesGeneres.filter(p => p.recurrente);
+      
+      postesRecurrents.forEach(poste => {
+        // Trouver les employés disponibles pour ce créneau
+        const employesEligibles = employesDisponibles.filter(employe => {
+          const disponibilite = disponibilites[employe.id]?.[date];
+          if (!disponibilite || disponibilite === 'non') return false;
+          
+          // Vérifier compatibilité créneau/disponibilité
+          const creneau = creneauxHoraires.find(c => c.id === poste.creneauId);
+          if (!creneau) return false;
+          
+          if (disponibilite === 'miTempsMatin' && !['creneau1', 'creneau2'].includes(poste.creneauId)) {
+            return false;
+          }
+          if (disponibilite === 'miTempsApresMidi' && !['creneau5', 'creneau6'].includes(poste.creneauId)) {
+            return false;
+          }
+          if (disponibilite === 'matin' && creneau.equipe === 'apresMidi') {
+            return false;
+          }
+          if (disponibilite === 'apresMidi' && creneau.equipe === 'matin') {
+            return false;
+          }
+          
+          // Vérifier que le créneau n'est pas déjà utilisé par cet employé
+          if (creneauxUtilises.has(`${employe.id}_${poste.creneauId}`)) {
+            return false;
+          }
+          
+          return true;
+        });
+        
+        // Trier par nombre d'affectations (équité)
+        const employesEligiblesTries = employesEligibles.sort((a, b) => {
+          const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
+          const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
+          return affectA - affectB;
+        });
+        
+        if (employesEligiblesTries.length > 0) {
+          const employeChoisi = employesEligiblesTries[0];
+          
+          // Affecter l'employé au poste
+          poste.employeAffecte = employeChoisi.id;
+          poste.employeNom = employeChoisi.nom;
+          poste.niveauCompetence = 0; // Pas de niveau de compétence pour les activités récurrentes
+          
+          // Marquer le créneau comme utilisé
+          creneauxUtilises.add(`${employeChoisi.id}_${poste.creneauId}`);
+        }
+      });
+    }
+
     // ===== PHASE 1 : Affectation EO avec delta positif minimal =====
     const besoinEO = heuresNecessaires['EO'] || 0;
     
@@ -2288,15 +2393,12 @@ const traiterDisponibilites = () => {
       const besoinActivite = heuresNecessaires[activite];
       if (!besoinActivite || besoinActivite <= 0) return;
       
-      console.log(`\n--- Activité X FIXE: ${activite} (${besoinActivite.toFixed(2)}h nécessaires) ---`);
-      
       // Identifier les créneaux autorisés pour cette activité
       const creneauxAutorises = creneauxHoraires.filter(c => 
         c.activitesAutorisees.includes(activite)
       );
       
       if (creneauxAutorises.length === 0) {
-        console.log(`⚠️ Aucun créneau autorisé pour ${activite}`);
         return;
       }
       
@@ -2306,13 +2408,8 @@ const traiterDisponibilites = () => {
       // Calculer X (nombre de personnes par créneau)
       const X = Math.ceil(besoinActivite / sommeDurees);
       
-      console.log(`Créneaux autorisés: ${creneauxAutorises.map(c => c.label).join(', ')}`);
-      console.log(`Somme durées: ${sommeDurees.toFixed(2)}h`);
-      console.log(`X = ⌈${besoinActivite.toFixed(2)} / ${sommeDurees.toFixed(2)}⌉ = ${X} personne${X > 1 ? 's' : ''} par créneau`);
-      
       // Pour chaque créneau autorisé, affecter X personnes
       creneauxAutorises.forEach(creneau => {
-        console.log(`\n  Créneau ${creneau.label}:`);
         
         // Identifier les employés éligibles pour ce créneau
         const employesEligibles = employesRestants.filter(employe => {
@@ -2363,8 +2460,6 @@ const traiterDisponibilites = () => {
         const employesNonCompetents = modeAleatoire 
           ? melangerTableau(employesNonCompetentsFiltre)
           : employesNonCompetentsFiltre;
-        
-        console.log(`  Employés compétents: ${employesCompetents.length}, non compétents: ${employesNonCompetents.length}`);
         
         // Affecter X personnes
         let postesAffectes = 0;
@@ -2427,28 +2522,20 @@ const traiterDisponibilites = () => {
       const besoinActivite = heuresNecessaires[activite];
       if (!besoinActivite || besoinActivite <= 0) return;
       
-      console.log(`\n--- Activité FLEXIBLE (Round-Robin): ${activite} (${besoinActivite.toFixed(2)}h nécessaires) ---`);
-      
       // Identifier les créneaux autorisés pour cette activité
       const creneauxAutorises = creneauxHoraires.filter(c => 
         c.activitesAutorisees.includes(activite)
       );
       
       if (creneauxAutorises.length === 0) {
-        console.log(`⚠️ Aucun créneau autorisé pour ${activite}`);
         return;
       }
-      
-      console.log(`Créneaux autorisés: ${creneauxAutorises.map(c => c.label).join(', ')}`);
-      console.log(`Algorithme: 1 personne par créneau, puis recommencer jusqu'à combler le besoin total`);
       
       let besoinRestant = besoinActivite;
       let numeroTour = 1;
       
       // Algorithme Round-Robin : affecter 1 personne par créneau, puis recommencer
       while (besoinRestant > 0.01) {
-        console.log(`\n  === Tour ${numeroTour} (besoin restant: ${besoinRestant.toFixed(2)}h) ===`);
-        
         let affectationsCeTour = 0;
         
         // Pour chaque créneau, essayer d'affecter 1 personne
@@ -3112,6 +3199,7 @@ const traiterDisponibilites = () => {
       parametres={parametres}
       defaultParametres={defaultParametres}
       handleParametresChange={handleParametresChange}
+      setParametres={setParametres}
       competencesActivites={competencesActivites}
       couleursActivites={couleursActivites}
       modifierCreneau={modifierCreneau}
@@ -3127,6 +3215,7 @@ const traiterDisponibilites = () => {
       toggleHeritageCompetence={toggleHeritageCompetence}
       toggleCreneauSousActivite={toggleCreneauSousActivite}
       toggleMemePersonne={toggleMemePersonne}
+      sauvegarderParametres={sauvegarderParametres}
     />
   );
 
@@ -3215,6 +3304,7 @@ const traiterDisponibilites = () => {
             disponibilites={disponibilites}
             parametres={parametres}
             couleursActivites={couleursActivites}
+            obtenirCouleurActivite={obtenirCouleurActivite}
             genererAffectationComplete={genererAffectationComplete}
             calculerEcarts={calculerEcarts}
             analyserDisponibilites={analyserDisponibilites}
@@ -3260,6 +3350,7 @@ const traiterDisponibilites = () => {
             disponibilites={disponibilites}
             parametres={parametres}
             couleursActivites={couleursActivites}
+            obtenirCouleurActivite={obtenirCouleurActivite}
             setActiveTab={setActiveTab}
           />
         );
