@@ -9,6 +9,7 @@ const PlanningFinalTab = ({
   disponibilites,
   parametres,
   couleursActivites,
+  obtenirCouleurActivite,
   setActiveTab
 }) => {
   // Helper pour obtenir le nom d'une sous-activité (compatibilité ancien/nouveau format)
@@ -121,21 +122,12 @@ const PlanningFinalTab = ({
               {employesDisponibles.map((employe, index) => {
                 const dispo = disponibilites[employe.id]?.[dateAffectation];
                 const totalHeures = calculerTotalHeures(employe.id);
-                const isEOAffecte = Object.values(affectationsPostes).includes(employe.id) && 
-                  dimensionnementGenere.postesGeneres.some(p => 
-                    affectationsPostes[p.id] === employe.id && p.exclusif
-                  );
 
                 return (
                   <tr key={employe.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     {/* Colonne Employé */}
                     <td className="border-2 border-gray-300 px-2 py-2">
                       <div className="font-bold text-xs">{employe.nom}</div>
-                      {isEOAffecte && (
-                        <div className="text-xs mt-1 bg-red-100 text-red-800 px-1 py-0.5 rounded inline-block">
-                          EO
-                        </div>
-                      )}
                     </td>
 
                     {/* Colonne Disponibilité */}
@@ -173,7 +165,6 @@ const PlanningFinalTab = ({
 
                       // Vérifier si l'employé peut travailler ce créneau
                       const peutTravailler = (() => {
-                        if (isEOAffecte) return activite === 'EO';
                         if (dispo === 'miTempsMatin' && !['creneau1', 'creneau2'].includes(creneau.id)) return false;
                         if (dispo === 'miTempsApresMidi' && !['creneau5', 'creneau6'].includes(creneau.id)) return false;
                         if (dispo === 'matin' && creneau.equipe === 'apresMidi') return false;
@@ -194,7 +185,7 @@ const PlanningFinalTab = ({
                           <td 
                             key={creneau.id} 
                             className="border-2 border-gray-300 px-2 py-2 text-center"
-                            style={{ backgroundColor: couleursActivites[affichage] || couleursActivites[activite] }}
+                            style={{ backgroundColor: obtenirCouleurActivite(affichage) }}
                           >
                             <div className="font-bold text-xs">{affichage}</div>
                           </td>
