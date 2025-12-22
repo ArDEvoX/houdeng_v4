@@ -497,6 +497,24 @@ const LogistiqueApp = () => {
     return prochainsjours;
   };
   
+  const genererDerniersJours = (nombreJours = 7) => {
+    const aujourdhui = new Date();
+    const derniersJours = [];
+    
+    for (let i = nombreJours; i > 0; i--) {
+      const date = new Date(aujourdhui);
+      date.setDate(date.getDate() - i);
+      
+      const jour = date.getDate().toString().padStart(2, '0');
+      const mois = (date.getMonth() + 1).toString().padStart(2, '0');
+      const annee = date.getFullYear();
+      
+      derniersJours.push(`${jour}/${mois}/${annee}`);
+    }
+    
+    return derniersJours;
+  };
+  
   // FONCTIONS UTILITAIRES POUR LA VUE CALENDRIER
   
   // Obtenir le nom du jour de la semaine
@@ -3358,6 +3376,7 @@ const traiterDisponibilites = () => {
         return (
           <RevueTab
             datesDispo={datesDispo}
+            genererDerniersJours={genererDerniersJours}
             grouperParSemaines={grouperParSemaines}
             getJourSemaine={getJourSemaine}
             isWeekend={isWeekend}
