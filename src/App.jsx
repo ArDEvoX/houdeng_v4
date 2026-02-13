@@ -119,6 +119,14 @@ const LogistiqueApp = () => {
       'PICKING 16': true,
       'MEZZ': true
     },
+    contraintesRepartition: {
+      'PICKING FRIGO': {},
+      'CONTRÔLE': {},
+      'EO': {},
+      'REMPL. AUT.': {},
+      'PICKING TRAD': {},
+      'RANGEMENT': {}
+    },
     creneauxPersonnalises: [
       { 
         id: 'creneau1', 
@@ -659,7 +667,11 @@ const LogistiqueApp = () => {
         const employesSnapshot = await getDocs(employesRef);
         const employesData = employesSnapshot.docs.map(doc => ({...doc.data(), id: doc.id}));
         if (employesData.length > 0) {
-          setEmployes(employesData);
+          // Trier les employés par ordre alphabétique
+          const employesTries = employesData.sort((a, b) => 
+            a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+          );
+          setEmployes(employesTries);
         }
         
         // Charger les compétences
@@ -1996,17 +2008,21 @@ const traiterDisponibilites = () => {
   };
 
   // Fonction pour trier avec option de mélange aléatoire par niveau de compétence
-  const trierEmployesAvecAleatoire = (employes, activite, useAleatoire, postesGeneres) => {
+  const trierEmployesAvecAleatoire = (employes, activite, useAleatoire, postesGeneres, nombrePostesParEmploye = {}) => {
     if (!useAleatoire) {
-      // Mode déterministe (actuel) : tri par compétence puis nombre d'affectations
+      // Mode déterministe : tri par nombre total de postes (équité), puis par compétence
       return [...employes].sort((a, b) => {
+        // PRIORITÉ 1 : Équité globale - moins de postes affectés sur toute la journée = prioritaire
+        const postesTotauxA = nombrePostesParEmploye[a.id] || 0;
+        const postesTotauxB = nombrePostesParEmploye[b.id] || 0;
+        if (postesTotauxA !== postesTotauxB) {
+          return postesTotauxA - postesTotauxB; // Moins de postes = prioritaire
+        }
+        
+        // PRIORITÉ 2 : Compétence - plus compétent = prioritaire (à égalité de postes)
         const compA = competences[a.id]?.[activite] || 0;
         const compB = competences[b.id]?.[activite] || 0;
-        if (compB !== compA) return compB - compA;
-        
-        const affectA = postesGeneres.filter(p => p.employeAffecte === a.id).length;
-        const affectB = postesGeneres.filter(p => p.employeAffecte === b.id).length;
-        return affectA - affectB;
+        return compB - compA; // Compétence décroissante
       });
     }
     
@@ -2220,6 +2236,63 @@ const traiterDisponibilites = () => {
     return true;
   };
 
+  // FONCTION DE VALIDATION DES CONTRAINTES
+  const validerContraintes = (postesGeneres, contraintesRepartition) => {
+    const violations = [];
+    const compteurs = {}; // { activite: { creneauId: nombre } }
+    
+    // Compter les postes affectés par activité et créneau
+    postesGeneres.forEach(poste => {
+      if (poste.employeAffecte) {
+        const activite = poste.activite;
+        const creneauId = poste.creneauId;
+        
+        if (!compteurs[activite]) {
+          compteurs[activite] = {};
+        }
+        if (!compteurs[activite][creneauId]) {
+          compteurs[activite][creneauId] = 0;
+        }
+        compteurs[activite][creneauId]++;
+      }
+    });
+    
+    // Vérifier les contraintes
+    Object.entries(contraintesRepartition || {}).forEach(([activite, contraintesActivite]) => {
+      Object.entries(contraintesActivite).forEach(([creneauId, contrainte]) => {
+        if (contrainte.actif) {
+          const nombre = compteurs[activite]?.[creneauId] || 0;
+          
+          if (nombre < contrainte.min) {
+            violations.push({
+              activite,
+              creneauId,
+              actuel: nombre,
+              min: contrainte.min,
+              max: contrainte.max,
+              type: 'MANQUE_MINIMUM'
+            });
+          } else if (nombre > contrainte.max) {
+            violations.push({
+              activite,
+              creneauId,
+              actuel: nombre,
+              min: contrainte.min,
+              max: contrainte.max,
+              type: 'DEPASSEMENT_MAX'
+            });
+          }
+        }
+      });
+    });
+    
+    return {
+      violations,
+      estValide: violations.length === 0,
+      compteurs
+    };
+  };
+
   // NOUVELLE FONCTION : Générer l'affectation complète avec la nouvelle stratégie
   const genererAffectationComplete = (volume, date = dateAffectation, modeAleatoire = false) => {
     if (!volume || volume <= 0) return null;
@@ -2249,9 +2322,15 @@ const traiterDisponibilites = () => {
     const postesGeneres = [];
     const employesAffectesEO = new Set();
     const creneauxUtilises = new Set();
+    const nombrePostesParEmploye = {}; // Compteur global pour l'équité
     let posteId = 1;
     
     const creneauxHoraires = parametres.creneauxPersonnalises || [];
+    
+    // Initialiser le compteur de postes pour tous les employés disponibles
+    employesDisponibles.forEach(emp => {
+      nombrePostesParEmploye[emp.id] = 0;
+    });
 
     // ===== PHASE 0 : Activités récurrentes configurées =====
     let postesRecurrentsCreés = 0;
@@ -2343,6 +2422,7 @@ const traiterDisponibilites = () => {
 
     // ===== PHASE 1 : Affectation EO avec delta positif minimal =====
     const besoinEO = heuresNecessaires['EO'] || 0;
+    const SEUIL_TOLERANCE_EO = 3.0; // Seuil de tolérance : ne pas affecter si déficit < 3h
     
     if (besoinEO > 0) {
       // Employés compétents EO triés (avec option aléatoire)
@@ -2353,7 +2433,7 @@ const traiterDisponibilites = () => {
 
       let heuresAffecteesEO = 0;
       
-      // Algorithme glouton : ajouter des employés jusqu'à delta positif
+      // Algorithme glouton : ajouter des employés jusqu'à delta positif ou déficit acceptable
       for (const employe of employesEO) {
         const disponibilite = disponibilites[employe.id]?.[date];
         const creneauxEmploye = obtenirCreneauxEmploye(disponibilite);
@@ -2364,8 +2444,8 @@ const traiterDisponibilites = () => {
         const deltaActuel = heuresAffecteesEO - besoinEO;
         const nouveauDelta = nouvellesHeures - besoinEO;
         
-        // Si on n'a pas encore de delta positif, on ajoute l'employé
-        if (deltaActuel <= 0) {
+        // Affecter seulement si le déficit actuel est > 3h (en valeur absolue)
+        if (deltaActuel < 0 && Math.abs(deltaActuel) > SEUIL_TOLERANCE_EO) {
           // Affecter à EO pour toute sa journée
           creneauxEmploye.forEach(creneau => {
             postesGeneres.push({
@@ -2424,10 +2504,25 @@ const traiterDisponibilites = () => {
       const sommeDurees = creneauxAutorises.reduce((sum, c) => sum + c.duree, 0);
       
       // Calculer X (nombre de personnes par créneau)
-      const X = Math.ceil(besoinActivite / sommeDurees);
+      let X = Math.ceil(besoinActivite / sommeDurees);
       
       // Pour chaque créneau autorisé, affecter X personnes
       creneauxAutorises.forEach(creneau => {
+        // APPLIQUER LES CONTRAINTES MIN/MAX si configurées
+        const contrainte = parametres.contraintesRepartition?.[activite]?.[creneau.id];
+        let XCreneau = X; // Nombre de personnes pour ce créneau spécifique
+        
+        if (contrainte?.actif) {
+          // Limiter X entre min et max
+          const XCalcule = X;
+          XCreneau = Math.max(contrainte.min, Math.min(X, contrainte.max));
+          
+          if (XCalcule < contrainte.min) {
+            console.log(`  ⚠️ ${activite} - ${creneau.label}: X calculé (${XCalcule}) < minimum (${contrainte.min}), ajusté à ${XCreneau}`);
+          } else if (XCalcule > contrainte.max) {
+            console.log(`  ⚠️ ${activite} - ${creneau.label}: X calculé (${XCalcule}) > maximum (${contrainte.max}), limité à ${XCreneau}`);
+          }
+        }
         
         // Identifier les employés éligibles pour ce créneau
         const employesEligibles = employesRestants.filter(employe => {
@@ -2467,8 +2562,8 @@ const traiterDisponibilites = () => {
           (competences[e.id]?.[activite] || 0) > 0
         );
         
-        // Utiliser le tri avec option aléatoire
-        const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres);
+        // Utiliser le tri avec option aléatoire AVEC compteur global
+        const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres, nombrePostesParEmploye);
         
         const employesNonCompetentsFiltre = employesEligibles.filter(e => 
           (competences[e.id]?.[activite] || 0) === 0
@@ -2479,12 +2574,12 @@ const traiterDisponibilites = () => {
           ? melangerTableau(employesNonCompetentsFiltre)
           : employesNonCompetentsFiltre;
         
-        // Affecter X personnes
+        // Affecter XCreneau personnes (avec contraintes appliquées)
         let postesAffectes = 0;
         
         // D'abord les compétents
         for (const employe of employesCompetents) {
-          if (postesAffectes >= X) break;
+          if (postesAffectes >= XCreneau) break;
           
           postesGeneres.push({
             id: `poste_${posteId++}`,
@@ -2500,16 +2595,17 @@ const traiterDisponibilites = () => {
           });
           
           creneauxUtilises.add(`${employe.id}_${creneau.id}`);
+          nombrePostesParEmploye[employe.id]++; // Incrémenter le compteur global
           postesAffectes++;
           console.log(`  ✓ ${employe.nom} (compétent, niveau ${competences[employe.id]?.[activite]})`);
         }
         
         // Compléter avec des non compétents si nécessaire
-        if (postesAffectes < X) {
-          console.log(`  ⚠️ Manque ${X - postesAffectes} personne${X - postesAffectes > 1 ? 's' : ''}, affectation d'employés NON compétents`);
+        if (postesAffectes < XCreneau) {
+          console.log(`  ⚠️ Manque ${XCreneau - postesAffectes} personne${XCreneau - postesAffectes > 1 ? 's' : ''}, affectation d'employés NON compétents`);
           
           for (const employe of employesNonCompetents) {
-            if (postesAffectes >= X) break;
+            if (postesAffectes >= XCreneau) break;
             
             postesGeneres.push({
               id: `poste_${posteId++}`,
@@ -2598,8 +2694,8 @@ const traiterDisponibilites = () => {
             (competences[e.id]?.[activite] || 0) > 0
           );
           
-          // Utiliser le tri avec option aléatoire
-          const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres);
+          // Utiliser le tri avec option aléatoire AVEC compteur global
+          const employesCompetents = trierEmployesAvecAleatoire(employesCompetentsFiltre, activite, modeAleatoire, postesGeneres, nombrePostesParEmploye);
           
           const employesNonCompetentsFiltre = employesEligibles.filter(e => 
             (competences[e.id]?.[activite] || 0) === 0
@@ -2638,6 +2734,7 @@ const traiterDisponibilites = () => {
             });
             
             creneauxUtilises.add(`${employeAAffecter.id}_${creneau.id}`);
+            nombrePostesParEmploye[employeAAffecter.id]++; // Incrémenter le compteur global
             besoinRestant -= creneau.duree;
             affectationsCeTour++;
             

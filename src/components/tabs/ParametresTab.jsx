@@ -86,6 +86,7 @@ const ParametresTab = ({
     { id: 'creneaux', label: '🕒 Créneaux horaires', color: 'from-green-500 to-green-600' },
     { id: 'sous-activites', label: '📋 Sous-activités', color: 'from-orange-500 to-orange-600' },
     { id: 'recurrentes', label: '🔄 Activités récurrentes', color: 'from-pink-500 to-pink-600' },
+    { id: 'contraintes', label: '⚖️ Contraintes de répartition', color: 'from-red-500 to-red-600' },
   ];
 
   return (
@@ -457,6 +458,189 @@ const ParametresTab = ({
               <strong>💡 Note :</strong> Les sous-activités avec héritage de compétences utilisent automatiquement 
               les compétences de l'activité principale. Les sous-activités sans héritage nécessiteront 
               une définition de compétences spécifiques dans la matrice de compétences.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Section Contraintes de répartition */}
+      {sectionActive === 'contraintes' && (
+        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl shadow-lg p-6 border-2 border-red-200">
+          <h2 className="text-2xl font-bold mb-4 text-red-800 flex items-center gap-2">
+            ⚖️ Contraintes de répartition par activité
+          </h2>
+          <p className="text-sm text-red-700 mb-6 bg-red-100 p-3 rounded-lg">
+            🎯 Définissez des limites min/max de personnes par activité et créneau pour éviter les déséquilibres dans la répartition du personnel.
+          </p>
+          
+          <div className="space-y-6">
+            {competencesActivites.map(activite => {
+              // Compter les contraintes actives pour cette activité
+              const contraintesActivite = parametres.contraintesRepartition?.[activite] || {};
+              const nombreContraintesActives = Object.values(contraintesActivite).filter(c => c.actif).length;
+              
+              return (
+                <div key={activite} className="bg-white rounded-xl p-5 shadow-lg border-2 border-red-200">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-xl" style={{color: '#007F61'}}>
+                      📌 {activite}
+                    </h4>
+                    <span className="bg-red-100 text-red-800 px-4 py-2 rounded-full text-sm font-bold">
+                      {nombreContraintesActives} contrainte{nombreContraintesActives > 1 ? 's' : ''} active{nombreContraintesActives > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {parametres.creneauxPersonnalises?.map(creneau => {
+                      // Ne montrer que les créneaux où l'activité est autorisée
+                      if (!creneau.activitesAutorisees.includes(activite)) {
+                        return null;
+                      }
+                      
+                      const contrainte = contraintesActivite[creneau.id] || { min: 0, max: 10, actif: false };
+                      
+                      return (
+                        <div key={creneau.id} className={`p-4 rounded-lg border-2 ${
+                          contrainte.actif 
+                            ? 'bg-red-50 border-red-300' 
+                            : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={contrainte.actif || false}
+                                  onChange={(e) => {
+                                    setParametres(prev => ({
+                                      ...prev,
+                                      contraintesRepartition: {
+                                        ...prev.contraintesRepartition,
+                                        [activite]: {
+                                          ...prev.contraintesRepartition[activite],
+                                          [creneau.id]: {
+                                            ...contrainte,
+                                            actif: e.target.checked
+                                          }
+                                        }
+                                      }
+                                    }));
+                                    setTimeout(() => sauvegarderParametres(), 500);
+                                  }}
+                                  className="w-5 h-5 rounded"
+                                />
+                                <span className="font-bold text-sm">
+                                  {contrainte.actif ? '✓ Activé' : 'Désactivé'}
+                                </span>
+                              </label>
+                              <span className="text-sm font-medium text-gray-700">
+                                {creneau.label} ({creneau.duree}h)
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {contrainte.actif && (
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                              <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">
+                                  Minimum de personnes
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={contrainte.max || 10}
+                                  value={contrainte.min || 0}
+                                  onChange={(e) => {
+                                    const newMin = parseInt(e.target.value) || 0;
+                                    const newMax = Math.max(newMin, contrainte.max || 0);
+                                    setParametres(prev => ({
+                                      ...prev,
+                                      contraintesRepartition: {
+                                        ...prev.contraintesRepartition,
+                                        [activite]: {
+                                          ...prev.contraintesRepartition[activite],
+                                          [creneau.id]: {
+                                            ...contrainte,
+                                            min: newMin,
+                                            max: newMax
+                                          }
+                                        }
+                                      }
+                                    }));
+                                    setTimeout(() => sauvegarderParametres(), 500);
+                                  }}
+                                  className="w-full p-2 border-2 border-gray-300 rounded-lg text-center font-bold focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                                />
+                              </div>
+                              
+                              <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">
+                                  Maximum de personnes
+                                </label>
+                                <input
+                                  type="number"
+                                  min={contrainte.min || 0}
+                                  value={contrainte.max || 10}
+                                  onChange={(e) => {
+                                    const newMax = parseInt(e.target.value) || 10;
+                                    setParametres(prev => ({
+                                      ...prev,
+                                      contraintesRepartition: {
+                                        ...prev.contraintesRepartition,
+                                        [activite]: {
+                                          ...prev.contraintesRepartition[activite],
+                                          [creneau.id]: {
+                                            ...contrainte,
+                                            max: Math.max(newMax, contrainte.min || 0)
+                                          }
+                                        }
+                                      }
+                                    }));
+                                    setTimeout(() => sauvegarderParametres(), 500);
+                                  }}
+                                  className="w-full p-2 border-2 border-gray-300 rounded-lg text-center font-bold focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Bouton pour désactiver toutes les contraintes de cette activité */}
+                  {nombreContraintesActives > 0 && (
+                    <button
+                      onClick={() => {
+                        setParametres(prev => {
+                          const newContraintes = { ...prev.contraintesRepartition[activite] };
+                          Object.keys(newContraintes).forEach(creneauId => {
+                            newContraintes[creneauId] = { ...newContraintes[creneauId], actif: false };
+                          });
+                          return {
+                            ...prev,
+                            contraintesRepartition: {
+                              ...prev.contraintesRepartition,
+                              [activite]: newContraintes
+                            }
+                          };
+                        });
+                        setTimeout(() => sauvegarderParametres(), 500);
+                      }}
+                      className="mt-4 w-full py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all font-medium"
+                    >
+                      ✖️ Désactiver toutes les contraintes de {activite}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>💡 Fonctionnement :</strong> Les contraintes limitent le nombre de personnes affectées par activité et créneau lors de la génération automatique à l'Étape 4.
+              Si les contraintes ne peuvent pas être respectées (manque de personnel), des alertes seront affichées.
             </p>
           </div>
         </div>

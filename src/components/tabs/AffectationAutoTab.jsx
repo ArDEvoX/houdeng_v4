@@ -144,6 +144,19 @@ const AffectationAutoTab = ({
     return analyserDisponibilites(dateAffectation, dimensionnementGenere);
   }, [dateAffectation, dimensionnementGenere, analyserDisponibilites]);
 
+  // Trier les dates chronologiquement
+  const datesTriees = useMemo(() => {
+    return [...datesDispo].sort((a, b) => {
+      const [jourA, moisA, anneeA] = a.split('/').map(Number);
+      const [jourB, moisB, anneeB] = b.split('/').map(Number);
+      
+      const dateA = new Date(anneeA, moisA - 1, jourA);
+      const dateB = new Date(anneeB, moisB - 1, jourB);
+      
+      return dateA - dateB;
+    });
+  }, [datesDispo]);
+
   return (
     <div className="space-y-6">
       {/* Section 1: Sélection date et volume */}
@@ -163,7 +176,7 @@ const AffectationAutoTab = ({
               }}
             >
               <option value="">Sélectionnez une date...</option>
-              {datesDispo.map(date => (
+              {datesTriees.map(date => (
                 <option key={date} value={date}>{date}</option>
               ))}
             </select>
