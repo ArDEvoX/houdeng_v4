@@ -2503,8 +2503,16 @@ const traiterDisponibilites = () => {
       // Calculer la somme des durées des créneaux autorisés
       const sommeDurees = creneauxAutorises.reduce((sum, c) => sum + c.duree, 0);
       
-      // Calculer X (nombre de personnes par créneau)
-      let X = Math.ceil(besoinActivite / sommeDurees);
+      // Calculer X (nombre de personnes par créneau) avec arrondi intelligent
+      const ratio = besoinActivite / sommeDurees;
+      const decimal = ratio % 1; // Partie décimale (ex: 1.05 → 0.05)
+      
+      // Si la partie décimale est < 0.2 (20%), arrondir à l'inférieur
+      // Sinon, arrondir au supérieur
+      let X = decimal < 0.2 ? Math.floor(ratio) : Math.ceil(ratio);
+      
+      // S'assurer qu'on a au moins 1 personne
+      X = Math.max(1, X);
       
       // Pour chaque créneau autorisé, affecter X personnes
       creneauxAutorises.forEach(creneau => {
