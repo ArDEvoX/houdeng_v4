@@ -34,6 +34,7 @@ const AffectationAutoTab = ({
 }) => {
   const [statutSauvegarde, setStatutSauvegarde] = React.useState(''); // '', 'saving', 'saved', 'error'
   const [modeAleatoire, setModeAleatoire] = React.useState(false);
+  const [explicationVisible, setExplicationVisible] = React.useState(false);
   const timeoutSauvegardeRef = useRef(null);
 
   // Fonction de sauvegarde automatique avec debounce
@@ -245,6 +246,87 @@ const AffectationAutoTab = ({
             )}
           </div>
         )}
+
+        {/* Section explicative dépliable */}
+        <div className="mt-4 border border-blue-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setExplicationVisible(!explicationVisible)}
+            className="w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 flex items-center justify-between transition-colors"
+          >
+            <span className="font-medium text-blue-900 flex items-center gap-2">
+              📖 Comment fonctionne l'affectation automatique ?
+            </span>
+            <span className="text-blue-600 text-xl">
+              {explicationVisible ? '▼' : '▶'}
+            </span>
+          </button>
+          
+          {explicationVisible && (
+            <div className="p-4 bg-white border-t border-blue-200">
+              {/* PHASE 0 */}
+              <div className="mb-4 p-3 border-l-4 border-purple-400 bg-purple-50 rounded">
+                <h4 className="font-semibold text-purple-900 mb-2">PHASE 0 : Activités récurrentes</h4>
+                <ul className="text-sm text-purple-800 space-y-1">
+                  <li>• Attribution prioritaire des activités récurrentes configurées</li>
+                  <li>• Affectation automatique des employés disponibles</li>
+                  <li>• Nombre de personnes fixé dans les paramètres</li>
+                </ul>
+              </div>
+
+              {/* PHASE 1 */}
+              <div className="mb-4 p-3 border-l-4 border-green-400 bg-green-50 rounded">
+                <h4 className="font-semibold text-green-900 mb-2">PHASE 1 : EO (Équipement d'Origine)</h4>
+                <ul className="text-sm text-green-800 space-y-1">
+                  <li>• <strong>Objectif :</strong> Delta positif minimal</li>
+                  <li>• Attribution séquentielle jusqu'à surplus</li>
+                  <li>• Employés exclusifs toute la journée</li>
+                  <li>• Arrêt si déficit &lt; 3h (seuil de tolérance)</li>
+                </ul>
+              </div>
+
+              {/* PHASE 2A */}
+              <div className="mb-4 p-3 border-l-4 border-orange-400 bg-orange-50 rounded">
+                <h4 className="font-semibold text-orange-900 mb-2">PHASE 2A : Activités à "X fixe"</h4>
+                <div className="text-sm text-orange-800 space-y-1 mb-2">
+                  <div><strong>Activités :</strong> PICKING FRIGO, PICKING TRAD, CONTRÔLE</div>
+                  <div><strong>Principe :</strong> Même nombre de personnes par créneau</div>
+                </div>
+                <div className="bg-white p-2 rounded border border-orange-200">
+                  <code className="text-xs">X = ceil(heures_nécessaires ÷ somme_durées_créneaux)</code>
+                </div>
+                <ul className="text-sm text-orange-800 space-y-1 mt-2">
+                  <li>• Application des contraintes Min/Max si configurées</li>
+                  <li>• Priorité aux employés compétents</li>
+                </ul>
+              </div>
+
+              {/* PHASE 2B */}
+              <div className="mb-4 p-3 border-l-4 border-blue-400 bg-blue-50 rounded">
+                <h4 className="font-semibold text-blue-900 mb-2">PHASE 2B : Activités flexibles (Round-Robin)</h4>
+                <div className="text-sm text-blue-800 space-y-1 mb-2">
+                  <div><strong>Activités :</strong> REMPL. AUT., RANGEMENT</div>
+                  <div><strong>Principe :</strong> 1 personne par créneau, puis recommencer</div>
+                </div>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• Répartition équilibrée sur tous les créneaux</li>
+                  <li>• Continue jusqu'à couvrir le besoin</li>
+                  <li>• Priorité aux employés compétents</li>
+                </ul>
+              </div>
+
+              {/* Principes généraux */}
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+                <h4 className="font-semibold text-gray-900 mb-2">🎯 Principes généraux</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
+                  <div>✓ <strong>Équité :</strong> Employés avec moins de postes = prioritaires</div>
+                  <div>✓ <strong>Compétence :</strong> Plus compétents = prioritaires</div>
+                  <div>🎲 <strong>Mode aléatoire :</strong> Mélange par niveau de compétence</div>
+                  <div>⚠️ <strong>Alertes :</strong> Employés non compétents en rouge</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Section 2: Analyse des disponibilités */}
