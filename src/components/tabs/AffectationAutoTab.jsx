@@ -433,6 +433,10 @@ const AffectationAutoTab = ({
                               ...activitesPersonnalisees,
                               ...activitesRecurrentesCreneau
                             ].filter(activite => {
+                              // Toujours inclure l'activité actuellement affectée (même sans compétence)
+                              if (activite === activiteActuelle) {
+                                return true;
+                              }
                               // Les activités personnalisées et récurrentes sont toujours disponibles
                               if (activitesPersonnalisees.includes(activite) || activitesRecurrentesCreneau.includes(activite)) {
                                 return true;
@@ -493,11 +497,14 @@ const AffectationAutoTab = ({
                                     }}
                                   >
                                     <option value="">-</option>
-                                    {activitesPossibles.map(activite => (
-                                      <option key={activite} value={activite}>
-                                        {activite} (Niv.{competences[employe.id]?.[activite] || 0})
-                                      </option>
-                                    ))}
+                                    {activitesPossibles.map(activite => {
+                                      const niveauCompetence = competences[employe.id]?.[activite] || 0;
+                                      return (
+                                        <option key={activite} value={activite}>
+                                          {activite} {niveauCompetence === 0 ? '⚠️ (Niv.0 - Non compétent)' : `(Niv.${niveauCompetence})`}
+                                        </option>
+                                      );
+                                    })}
                                   </select>
                                 ) : (
                                   <span className="text-xs text-gray-500">-</span>
